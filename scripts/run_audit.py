@@ -1,22 +1,3 @@
-# ============================================================
-# SIPA path bootstrap (robust repo-local imports)
-# ============================================================
-
-import sys
-from pathlib import Path
-
-_THIS_FILE = Path(__file__).resolve()
-_REPO_ROOT = _THIS_FILE.parents[1]
-
-# Add repo root for absolute imports
-if str(_REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(_REPO_ROOT))
-
-# Add octonion extension if present
-_EXT_PATH = _REPO_ROOT / "exts" / "octonion_time"
-if _EXT_PATH.exists() and str(_EXT_PATH) not in sys.path:
-    sys.path.insert(0, str(_EXT_PATH))
-
 #!/usr/bin/env python3
 """
 SIPA One-Click Audit CLI (Production)
@@ -29,12 +10,58 @@ This script is intentionally thin and acts as the orchestration layer.
 
 from __future__ import annotations
 
-import argparse
+# ============================================================
+# SIPA path bootstrap (robust repo-local imports)
+# ============================================================
+
 import sys
 from pathlib import Path
+
+
+def _bootstrap_repo() -> Path:
+    """
+    Robustly locate repo root and patch sys.path.
+
+    Works whether run from:
+    - repo root
+    - scripts/
+    - installed entrypoint
+    """
+    this_file = Path(__file__).resolve()
+
+    # heuristic: repo root contains "scripts"
+    for parent in [this_file.parent, *this_file.parents]:
+        if (parent / "scripts").exists():
+            repo_root = parent
+            break
+    else:
+        repo_root = this_file.parent  # fallback
+
+    # add repo root
+    if str(repo_root) not in sys.path:
+        sys.path.insert(0, str(repo_root))
+
+    # add octonion extension if present
+    ext_path = repo_root / "exts" / "octonion_time"
+    if ext_path.exists() and str(ext_path) not in sys.path:
+        sys.path.insert(0, str(ext_path))
+
+    return repo_root
+
+
+_REPO_ROOT = _bootstrap_repo()
+
+# ============================================================
+# Standard imports
+# ============================================================
+
+import argparse
 from typing import Optional
 
-# --- local modules ---
+# ============================================================
+# Local modules (after bootstrap!)
+# ============================================================
+
 from scripts.sipa_video_auditor import run_residual_audit
 from scripts.calculate_debt import compute_debt_and_pir
 from scripts.audit_visualization import plot_pir_evolution
@@ -42,15 +69,13 @@ from scripts.audit_visualization import plot_pir_evolution
 
 # ============================================================
 # Optional lightweight validator
-# (kept here to avoid hard dependency explosion)
 # ============================================================
 
 def validate_csv_sanity(csv_path: Path) -> float:
     """
     Returns a data quality score in [0, 1].
 
-    This is intentionally conservative and cheap.
-    You can later swap in a learned validator.
+    Intentionally conservative and cheap.
     """
     import pandas as pd
 
@@ -86,6 +111,8 @@ def run_audit(
 
     print("\n[SIPA] =========================================")
     print("[SIPA] Starting Physical Integrity Audit")
+    print(f"[SIPA] Input: {input_csv}")
+    print(f"[SIPA] Output: {output_dir}")
     print("[SIPA] =========================================")
 
     # --------------------------------------------------------
@@ -94,6 +121,8 @@ def run_audit(
     if validator_score is None:
         print("[SIPA] Running data validator...")
         validator_score = validate_csv_sanity(input_csv)
+    else:
+        print("[SIPA] Using user-provided validator score.")
 
     print(f"[SIPA] Data Quality Score: {validator_score:.2f}")
 
@@ -115,7 +144,7 @@ def run_audit(
     )
 
     # --------------------------------------------------------
-    # 4. Visualization (the “verdict sheet”)
+    # 4. Visualization
     # --------------------------------------------------------
     print("[SIPA] Rendering diagnostic figure...")
     plot_pir_evolution(
