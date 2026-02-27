@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 
 from sipa_video_auditor import SIPAVideoAuditor
+from audit_visualization import plot_pir_evolution
 
 
 # ============================================================
@@ -17,18 +18,12 @@ from sipa_video_auditor import SIPAVideoAuditor
 # ============================================================
 
 def normalize_physical_debt(associator_mag: np.ndarray):
-    """
-    Map raw associator magnitude to [0,1] risk scale.
-    Heuristic log compression to avoid scale explosion.
-    """
     if associator_mag is None or len(associator_mag) == 0:
         return 0.0
 
     mean_val = float(np.mean(associator_mag))
-
     score = np.log10(mean_val + 1e-12) + 6.0
     score = np.clip(score / 6.0, 0.0, 1.0)
-
     return float(score)
 
 
@@ -42,9 +37,6 @@ def quality_level_to_score(level: str) -> float:
 
 
 def compute_pir(data_quality_level: str, physical_debt_norm: float):
-    """
-    Compute SIPA Physical Integrity Rating (PIR).
-    """
     q_score = quality_level_to_score(data_quality_level)
 
     pir = q_score * (1.0 - physical_debt_norm)
@@ -62,6 +54,42 @@ def compute_pir(data_quality_level: str, physical_debt_norm: float):
         grade, label = "F", "Critical"
 
     return pir, grade, label
+
+
+# ============================================================
+# Framewise utilities 
+# ============================================================
+
+def compute_framewise_debt(associator_series: np.ndarray):
+    """Map associator magnitude to framewise normalized debt."""
+    associator_series = np.asarray(associator_series, dtype=float)
+
+    if associator_series.size == 0:
+        return np.zeros(1)
+
+    log_scaled = np.log10(associator_series + 1e-12) + 6.0
+    debt = np.clip(log_scaled / 6.0, 0.0, 1.0)
+    return debt
+
+
+def compute_pir_timeseries(quality_level: str, debt_t: np.ndarray):
+    q_score = quality_level_to_score(quality_level)
+    pir_t = q_score * (1.0 - debt_t)
+    return np.clip(pir_t, 0.0, 1.0)
+
+
+def detect_integrity_onset(pir_t: np.ndarray, dt: float, threshold=0.5):
+    """Detect first time PIR drops below threshold."""
+    below = np.where(pir_t < threshold)[0]
+    if len(below) == 0:
+        return None
+
+    idx = int(below[0])
+    return {
+        "frame_index": idx,
+        "time_sec": float(idx * dt),
+        "threshold": float(threshold),
+    }
 
 
 # ============================================================
@@ -90,8 +118,6 @@ class SIPAInputValidator:
 
         level = self._final_grade()
         return level, list(self.messages)
-
-    # ---------------- checks ----------------
 
     def _check_nan_inf(self, poses):
         if not np.isfinite(poses).all():
@@ -167,21 +193,17 @@ class SIPAInputValidator:
 
 def load_csv(path):
     df = pd.read_csv(path)
-
     required = ["x", "y", "z", "qx", "qy", "qz", "qw"]
     missing = [c for c in required if c not in df.columns]
     if missing:
         raise ValueError(f"CSV missing columns: {missing}")
-
     return df[required].values.astype(float)
 
 
 def load_npy(path):
     arr = np.load(path)
-
     if arr.ndim != 2 or arr.shape[1] != 7:
         raise ValueError(f"NPY must have shape (T,7), got {arr.shape}")
-
     return arr.astype(float)
 
 
@@ -220,7 +242,7 @@ def main():
     poses = load_auto(args.input, args.format)
     print(f"[SIPA] Loaded {len(poses)} frames")
 
-    # ---------------- input validation ----------------
+    # ---------- validation ----------
     validator = SIPAInputValidator()
     quality_level, messages = validator.validate(poses, args.dt)
 
@@ -228,20 +250,33 @@ def main():
     for m in messages:
         print(m)
 
-    # ---------------- run auditor ----------------
+    # ---------- audit ----------
     auditor = SIPAVideoAuditor(dt=args.dt)
-
     print("\n[SIPA] Running audit...")
     report = auditor.analyze(poses, save_dir=run_dir)
 
-    # ---------------- PIR computation ----------------
-    assoc_series = report.get("associator_magnitude_series", [])
-    debt_norm = normalize_physical_debt(np.asarray(assoc_series))
+    assoc_series = np.asarray(
+        report.get("associator_magnitude_series", []), dtype=float
+    )
 
-    quality_score = quality_level_to_score(quality_level)
+    debt_norm = normalize_physical_debt(assoc_series)
     pir, grade, label = compute_pir(quality_level, debt_norm)
 
-    # attach to report
+    # ---------- time series ----------
+    debt_t = compute_framewise_debt(assoc_series)
+    pir_t = compute_pir_timeseries(quality_level, debt_t)
+    onset = detect_integrity_onset(pir_t, args.dt)
+
+    # ---------- plot ----------
+    png_path, pdf_path, _ = plot_pir_evolution(
+        pir_t,
+        debt_t,
+        args.dt,
+        onset,
+        save_dir=run_dir,
+    )
+
+    # ---------- report ----------
     report.update(
         {
             "input_quality": quality_level,
@@ -249,20 +284,24 @@ def main():
             "pir_score": pir,
             "pir_grade": grade,
             "pir_label": label,
+            "integrity_onset": onset,
         }
     )
 
-    # save JSON
     json_path = os.path.join(run_dir, "sipa_report.json")
     with open(json_path, "w") as f:
         json.dump(report, f, indent=2)
 
-    # ---------------- terminal summary ----------------
+    # ---------- terminal ----------
+    quality_score = quality_level_to_score(quality_level)
+
     print("\n=== SIPA SUMMARY ===")
     print(f"[SIPA] FINAL RATING: {grade} ({label})")
     print(f"• Data Quality: {quality_score*100:.1f}%")
     print(f"• Physical Consistency: {(1-debt_norm)*100:.1f}%")
-    print(f"\n[SIPA] Outputs saved to: {run_dir}")
+    print(f"\n[SIPA] Integrity onset:", onset)
+    print(f"[SIPA] Figure saved:", png_path)
+    print(f"[SIPA] Outputs saved to: {run_dir}")
 
 
 if __name__ == "__main__":
