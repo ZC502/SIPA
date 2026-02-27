@@ -10,105 +10,119 @@ def plot_pir_evolution(
     onset_info,
     save_dir,
     prefix="sipa_audit",
+    enable_drt=True,  # 🔥 Diagnostic Risk Thresholding (default ON)
 ):
     """
-    Generate SIPA time-evolution figure.
+    Generate SIPA Physical Integrity evolution figure.
 
-    Parameters
-    ----------
-    pir_t : array-like, shape (T,)
-        PIR time series in [0, 1]
-    debt_t : array-like, shape (T,)
-        Physical debt time series in [0, 1]
-    dt : float
-        Timestep in seconds
-    onset_info : dict or None
-        Output of detect_integrity_onset()
-    save_dir : str or Path
-        Output directory
-    prefix : str
-        Filename prefix
+    Features:
+    - PIR(t) curve
+    - Physical Debt(t) curve
+    - Risk threshold line
+    - Integrity degradation onset marker
+    - 🔥 Diagnostic Risk Thresholding (background bands)
 
-    Returns
-    -------
-    png_path : str
-    pdf_path : str
-    num_frames : int
+    Returns:
+        (png_path, pdf_path)
     """
 
-    # -------------------------------
-    # Defensive checks (reviewer-safe)
-    # -------------------------------
-    pir_t = np.asarray(pir_t, dtype=float)
-    debt_t = np.asarray(debt_t, dtype=float)
+    # ===============================
+    # 🔒 Input validation
+    # ===============================
+    if pir_t is None or len(pir_t) == 0:
+        raise ValueError("pir_t is empty")
 
-    if pir_t.size == 0:
-        raise ValueError("[SIPA] pir_t is empty.")
+    if debt_t is None or len(debt_t) == 0:
+        raise ValueError("debt_t is empty")
 
-    if pir_t.shape != debt_t.shape:
-        raise ValueError(
-            f"[SIPA] Shape mismatch: pir_t {pir_t.shape} vs debt_t {debt_t.shape}"
-        )
+    if dt <= 0:
+        raise ValueError("dt must be positive")
 
-    if not np.isfinite(dt) or dt <= 0:
-        raise ValueError(f"[SIPA] Invalid dt: {dt}")
+    # length alignment (robust against mismatch)
+    n = min(len(pir_t), len(debt_t))
+    pir_t = np.asarray(pir_t[:n])
+    debt_t = np.asarray(debt_t[:n])
 
-    # -------------------------------
-    # Time axis
-    # -------------------------------
-    t = np.arange(len(pir_t)) * float(dt)
+    t = np.arange(n) * dt
 
-    # -------------------------------
-    # Prepare output dir
-    # -------------------------------
     save_dir = Path(save_dir)
     save_dir.mkdir(parents=True, exist_ok=True)
 
-    # -------------------------------
-    # Plot
-    # -------------------------------
-    plt.figure(figsize=(6, 4))
+    # ===============================
+    # 🎨 Figure
+    # ===============================
+    plt.figure(figsize=(7, 4.5))
 
-    # PIR curve
-    plt.plot(t, pir_t, label="PIR(t)")
+    # ===============================
+    # 🔥 Diagnostic Risk Thresholding
+    # ===============================
+    if enable_drt:
+        y_min = min(np.min(pir_t), np.min(debt_t))
+        y_max = max(np.max(pir_t), np.max(debt_t))
 
-    # Debt curve
-    plt.plot(t, debt_t, linestyle="--", label="Physical Debt(t)")
+        # Green band (stable)
+        plt.axhspan(0.75, y_max, alpha=0.08, color="green", label="_nolegend_")
 
-    # Risk threshold
-    plt.axhline(0.5, linestyle=":", label="Risk Threshold")
+        # Yellow band (marginal)
+        plt.axhspan(0.5, 0.75, alpha=0.08, color="gold", label="_nolegend_")
 
-    # Onset marker (robust)
-    if isinstance(onset_info, dict):
+        # Red band (risk)
+        plt.axhspan(y_min, 0.5, alpha=0.08, color="red", label="_nolegend_")
+
+    # ===============================
+    # 📈 Curves
+    # ===============================
+    plt.plot(t, pir_t, linewidth=2.2, label="PIR(t)")
+    plt.plot(
+        t,
+        debt_t,
+        linestyle="--",
+        linewidth=1.8,
+        label="Physical Debt(t)",
+    )
+
+    # ===============================
+    # 🚨 Risk threshold
+    # ===============================
+    plt.axhline(
+        0.5,
+        linestyle=":",
+        linewidth=1.5,
+        label="Risk Threshold",
+    )
+
+    # ===============================
+    # 📍 Onset marker (robust)
+    # ===============================
+    if onset_info is not None and isinstance(onset_info, dict):
         onset_time = onset_info.get("time_sec", None)
-        if onset_time is not None and np.isfinite(onset_time):
-            if 0 <= onset_time <= t[-1] + 1e-9:
-                plt.axvline(
-                    onset_time,
-                    linestyle="-.",
-                    label="Integrity Degradation Onset",
-                )
+        if onset_time is not None:
+            plt.axvline(
+                onset_time,
+                linestyle="-.",
+                linewidth=1.5,
+                label="Integrity Degradation Onset",
+            )
 
-    # Labels
+    # ===============================
+    # 🧾 Labels
+    # ===============================
     plt.xlabel("Time (s)")
     plt.ylabel("Score")
     plt.title("SIPA Physical Integrity Evolution")
 
-    # 🔑 Reviewer-friendly fixed scale
-    plt.ylim(0.0, 1.0)
-
-    plt.legend()
+    plt.legend(frameon=True)
     plt.grid(True, alpha=0.3)
 
-    # -------------------------------
-    # Save
-    # -------------------------------
+    # ===============================
+    # 💾 Save
+    # ===============================
     png_path = save_dir / f"{prefix}_pir_evolution.png"
     pdf_path = save_dir / f"{prefix}_pir_evolution.pdf"
 
     plt.tight_layout()
-    plt.savefig(png_path, dpi=200)
+    plt.savefig(png_path, dpi=220)
     plt.savefig(pdf_path)
     plt.close()
 
-    return str(png_path), str(pdf_path), int(len(pir_t))
+    return str(png_path), str(pdf_path)
