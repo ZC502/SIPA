@@ -6,22 +6,120 @@ from pathlib import Path
 # Global style (camera-ready, reviewer-safe)
 # ============================================================
 
+plt.rcParams.update({
+    "font.size": 11,
+    "axes.spines.top": False,
+    "axes.spines.right": False,
+    "axes.linewidth": 1.1,
+    "lines.linewidth": 2.0,
+})
+
 ENABLE_RISK_BANDS = True
 ENABLE_CONFIDENCE_ENVELOPE = True
 
-# Professional palette (not overly saturated)
-COLOR_PIR = "#2563EB"          # blue
-COLOR_DEBT = "#DC2626"         # red
-COLOR_ENVELOPE = "#6B7280"     # neutral gray
+COLOR_PIR = "#2563EB"
+COLOR_DEBT = "#DC2626"
+COLOR_ENVELOPE = "#6B7280"
 
-# Risk band colors (very light, audit style)
 BAND_GREEN = "#ECFDF5"
 BAND_YELLOW = "#FFFBEB"
 BAND_RED = "#FEF2F2"
 
 
 # ============================================================
-# --- Confidence Envelope (validator-weighted)
+# 🔍 RED Zone Detection Logic
+# ============================================================
+
+def find_first_red_entry(
+    pir: np.ndarray,
+    validator_mask: np.ndarray | None = None,
+    red_threshold: float = 0.5,
+    patience: int = 3,
+):
+    if pir is None or len(pir) == 0:
+        return None
+
+    pir = np.asarray(pir, dtype=float)
+
+    if validator_mask is None:
+        validator_mask = np.ones_like(pir, dtype=bool)
+    else:
+        validator_mask = np.asarray(validator_mask).astype(bool)
+
+    above = (pir >= red_threshold) & validator_mask
+
+    run = 0
+    for i, flag in enumerate(above):
+        if flag:
+            run += 1
+            if run >= patience:
+                return i - patience + 1
+        else:
+            run = 0
+
+    return None
+
+
+def overlay_first_red_marker(
+    ax,
+    t,
+    pir,
+    validator_mask=None,
+    red_threshold: float = 0.5,
+    patience: int = 3,
+    zorder: int = 6,
+):
+    idx = find_first_red_entry(
+        pir,
+        validator_mask=validator_mask,
+        red_threshold=red_threshold,
+        patience=patience,
+    )
+
+    if idx is None:
+        return None
+
+    x = t[idx]
+    y = pir[idx]
+
+    # main marker
+    ax.scatter(
+        [x],
+        [y],
+        s=90,
+        color="#ff2b2b",
+        edgecolors="white",
+        linewidths=1.5,
+        zorder=zorder,
+        label="First RED entry",
+    )
+
+    # glow
+    ax.scatter(
+        [x],
+        [y],
+        s=220,
+        color="#ff2b2b",
+        alpha=0.18,
+        linewidths=0,
+        zorder=zorder - 1,
+    )
+
+    # guide line
+    ax.axvline(
+        x,
+        color="#ff2b2b",
+        alpha=0.18,
+        linewidth=1.2,
+        linestyle="--",
+        zorder=zorder - 2,
+    )
+
+    return idx
+
+
+# ============================================================
+# Confidence Envelope
 # ============================================================
 
 def compute_pir_confidence_envelope(
@@ -30,35 +128,19 @@ def compute_pir_confidence_envelope(
     window: int = 15,
     k: float = 2.0,
 ):
-    """
-    Compute validator-weighted confidence envelope.
-
-    Parameters
-    ----------
-    pir_curve : (T,)
-    validator_score : float in [0,1]
-        Higher = better data quality → narrower band
-    window : rolling std window
-    k : uncertainty amplification factor
-
-    Returns
-    -------
-    upper, lower : arrays
-    """
+    pir_curve = np.asarray(pir_curve, dtype=float)
 
     if len(pir_curve) < 3:
         return pir_curve, pir_curve
 
-    # rolling std (robust, no pandas dependency)
     pad = window // 2
     padded = np.pad(pir_curve, (pad, pad), mode="edge")
 
-    rolling_std = np.zeros_like(pir_curve)
+    rolling_std = np.zeros(len(pir_curve), dtype=float)
     for i in range(len(pir_curve)):
         segment = padded[i:i + window]
         rolling_std[i] = np.std(segment)
 
-    # --- validator weighting (KEY DESIGN) ---
     validator_score = float(np.clip(validator_score, 0.0, 1.0))
     uncertainty_scale = 1.0 + k * (1.0 - validator_score)
 
@@ -71,24 +153,17 @@ def compute_pir_confidence_envelope(
 
 
 # ============================================================
-# --- Risk Bands (Diagnostic Risk Thresholding)
+# Risk Bands
 # ============================================================
 
 def _draw_risk_bands(ax):
-    """Draw Green / Yellow / Red background bands."""
-
-    # Green zone
     ax.axhspan(0.7, 1.0, color=BAND_GREEN, alpha=0.6, zorder=0)
-
-    # Yellow zone
     ax.axhspan(0.4, 0.7, color=BAND_YELLOW, alpha=0.6, zorder=0)
-
-    # Red zone
     ax.axhspan(0.0, 0.4, color=BAND_RED, alpha=0.6, zorder=0)
 
 
 # ============================================================
-# --- Main Plot Function (Production)
+# Main Plot
 # ============================================================
 
 def plot_pir_evolution(
@@ -99,20 +174,8 @@ def plot_pir_evolution(
     save_dir,
     prefix="sipa_audit",
     validator_score=0.95,
+    validator_mask=None,
 ):
-    """
-    Generate SIPA Physical Integrity evolution figure.
-
-    Features
-    --------
-    ✓ Diagnostic Risk Thresholding (background bands)
-    ✓ PIR curve
-    ✓ Physical Debt curve
-    ✓ Validator-weighted confidence envelope
-    ✓ Integrity onset marker
-    ✓ PNG + PDF export
-    """
-
     pir_t = np.asarray(pir_t, dtype=float)
     debt_t = np.asarray(debt_t, dtype=float)
 
@@ -121,21 +184,14 @@ def plot_pir_evolution(
     save_dir = Path(save_dir)
     save_dir.mkdir(parents=True, exist_ok=True)
 
-    # =========================================================
-    # Figure setup (ICRA/IEEE safe)
-    # =========================================================
     plt.figure(figsize=(6.0, 4.0))
     ax = plt.gca()
 
-    # =========================================================
-    # Background risk bands
-    # =========================================================
+    # background bands
     if ENABLE_RISK_BANDS:
         _draw_risk_bands(ax)
 
-    # =========================================================
-    # Confidence envelope (MIDDLE LAYER)
-    # =========================================================
+    # confidence envelope
     if ENABLE_CONFIDENCE_ENVELOPE and len(pir_t) > 5:
         upper, lower = compute_pir_confidence_envelope(
             pir_curve=pir_t,
@@ -153,9 +209,7 @@ def plot_pir_evolution(
             zorder=2,
         )
 
-    # =========================================================
-    # PIR curve (TOP LAYER)
-    # =========================================================
+    # PIR curve
     ax.plot(
         t,
         pir_t,
@@ -165,9 +219,7 @@ def plot_pir_evolution(
         zorder=3,
     )
 
-    # =========================================================
-    # Physical debt curve
-    # =========================================================
+    # Physical debt
     if len(debt_t) == len(pir_t):
         ax.plot(
             t,
@@ -180,9 +232,7 @@ def plot_pir_evolution(
             zorder=3,
         )
 
-    # =========================================================
-    # Risk threshold line
-    # =========================================================
+    # threshold
     ax.axhline(
         0.5,
         linestyle=":",
@@ -193,9 +243,7 @@ def plot_pir_evolution(
         zorder=1,
     )
 
-    # =========================================================
-    # Onset marker
-    # =========================================================
+    # onset line
     if onset_info is not None and "time_sec" in onset_info:
         ax.axvline(
             onset_info["time_sec"],
@@ -207,9 +255,16 @@ def plot_pir_evolution(
             zorder=4,
         )
 
-    # =========================================================
-    # Labels & styling
-    # =========================================================
+    # 🔥 CRITICAL: RED marker overlay
+    overlay_first_red_marker(
+        ax,
+        t,
+        pir_t,
+        validator_mask=validator_mask,
+        red_threshold=0.5,
+        patience=3,
+    )
+
     ax.set_xlabel("Time (s)")
     ax.set_ylabel("Score")
     ax.set_title("SIPA Physical Integrity Evolution")
@@ -220,9 +275,6 @@ def plot_pir_evolution(
     ax.grid(True, alpha=0.25)
     ax.legend(frameon=True)
 
-    # =========================================================
-    # Save outputs
-    # =========================================================
     png_path = save_dir / f"{prefix}_pir_evolution.png"
     pdf_path = save_dir / f"{prefix}_pir_evolution.pdf"
 
