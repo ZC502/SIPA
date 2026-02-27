@@ -1,11 +1,5 @@
 # ============================================================
-# SIPA v1.0 — Unified Audit Entry
-# ------------------------------------------------------------
-# Usage:
-# python scripts/run_audit.py \
-#     --input data/traj.csv \
-#     --format csv \
-#     --dt 0.02
+# SIPA v1.0 — Unified Audit Entry (Hardened)
 # ============================================================
 
 import argparse
@@ -15,6 +9,120 @@ import numpy as np
 import pandas as pd
 
 from sipa_video_auditor import SIPAVideoAuditor
+
+
+# ============================================================
+# Input Validator
+# ============================================================
+
+class SIPAInputValidator:
+    """
+    Lightweight input quality gate for SIPA.
+    Produces a traffic-light quality label.
+    """
+
+    def __init__(self):
+        self.messages = []
+        self.score_penalty = 0.0
+
+    # -----------------------------------------------------
+    # Main entry
+    # -----------------------------------------------------
+    def validate(self, poses: np.ndarray, dt: float):
+        """
+        poses: (T,7) -> [x,y,z,qx,qy,qz,qw]
+        dt: expected timestep
+        """
+        self.messages.clear()
+        self.score_penalty = 0.0
+
+        # 🔒 shape guard (NEW)
+        if poses.ndim != 2 or poses.shape[1] != 7:
+            self.messages.append(
+                f"[RED] Invalid pose shape {poses.shape}, expected (T,7)."
+            )
+            return "RED", list(self.messages)
+
+        self._check_nan_inf(poses)
+        self._check_quaternion_norm(poses)
+        self._check_temporal_jitter(poses, dt)
+        self._check_position_jumps(poses)
+
+        level = self._final_grade()
+        return level, list(self.messages)
+
+    # -----------------------------------------------------
+    # Checks
+    # -----------------------------------------------------
+    def _check_nan_inf(self, poses):
+        if not np.isfinite(poses).all():
+            self.messages.append(
+                "[RED] NaN or Inf detected in input trajectory."
+            )
+            self.score_penalty += 3.0
+
+    def _check_quaternion_norm(self, poses):
+        q = poses[:, 3:7]
+        norms = np.linalg.norm(q, axis=1)
+        deviation = np.abs(norms - 1.0)
+
+        max_dev = float(deviation.max())
+
+        if max_dev > 5e-2:
+            self.messages.append(
+                f"[RED] Quaternion severely unnormalized (max dev={max_dev:.3e})."
+            )
+            self.score_penalty += 3.0
+        elif max_dev > 1e-3:
+            self.messages.append(
+                f"[YELLOW] Quaternion slightly off unit norm (max dev={max_dev:.3e})."
+            )
+            self.score_penalty += 1.0
+
+    def _check_temporal_jitter(self, poses, dt):
+        pos = poses[:, :3]
+        vel = np.diff(pos, axis=0) / max(dt, 1e-8)
+
+        if len(vel) < 3:
+            return
+
+        speed = np.linalg.norm(vel, axis=1)
+        jitter = np.std(speed) / (np.mean(speed) + 1e-8)
+
+        if jitter > 1.0:
+            self.messages.append(
+                f"[YELLOW] High temporal jitter detected (ratio={jitter:.2f})."
+            )
+            self.score_penalty += 1.0
+
+    def _check_position_jumps(self, poses):
+        pos = poses[:, :3]
+        step = np.linalg.norm(np.diff(pos, axis=0), axis=1)
+
+        if len(step) == 0:
+            return
+
+        median = np.median(step) + 1e-8
+        max_jump = float(step.max() / median)
+
+        if max_jump > 50:
+            self.messages.append(
+                f"[RED] Extreme position jump detected (x{max_jump:.1f})."
+            )
+            self.score_penalty += 3.0
+        elif max_jump > 10:
+            self.messages.append(
+                f"[YELLOW] Large position jump detected (x{max_jump:.1f})."
+            )
+            self.score_penalty += 1.0
+
+    # -----------------------------------------------------
+    def _final_grade(self):
+        if self.score_penalty >= 3.0:
+            return "RED"
+        elif self.score_penalty >= 1.0:
+            return "YELLOW"
+        return "GREEN"
 
 
 # ============================================================
@@ -35,10 +143,12 @@ def load_csv(path):
 
 def load_npy(path):
     arr = np.load(path)
-    if arr.shape[1] != 7:
+
+    if arr.ndim != 2 or arr.shape[1] != 7:
         raise ValueError(
             f"NPY must have shape (T,7), got {arr.shape}"
         )
+
     return arr.astype(float)
 
 
@@ -78,16 +188,34 @@ def main():
 
     print("[SIPA] Loading trajectory...")
     poses = load_auto(args.input, args.format)
-
     print(f"[SIPA] Loaded {len(poses)} frames")
+
+    # ========================================================
+    # 🔥 NEW: INPUT QUALITY GATE
+    # ========================================================
+    validator = SIPAInputValidator()
+    quality_level, messages = validator.validate(poses, args.dt)
+
+    print(f"\n[SIPA] Input Quality: {quality_level}")
+    for m in messages:
+        print(m)
+
+    if quality_level == "RED":
+        print(
+            "[WARNING] Input data quality is poor. "
+            "Physical conclusions may be unreliable."
+        )
 
     # --------------------------------------------------------
     # run auditor
     # --------------------------------------------------------
     auditor = SIPAVideoAuditor(dt=args.dt)
 
-    print("[SIPA] Running audit...")
+    print("\n[SIPA] Running audit...")
     report = auditor.analyze(poses, save_dir=run_dir)
+
+    # 🔥 attach quality to report
+    report["input_quality"] = quality_level
 
     # --------------------------------------------------------
     # summary
