@@ -2,6 +2,94 @@ import matplotlib.pyplot as plt
 import numpy as np
 from pathlib import Path
 
+# ============================================================
+# Global style (camera-ready, reviewer-safe)
+# ============================================================
+
+ENABLE_RISK_BANDS = True
+ENABLE_CONFIDENCE_ENVELOPE = True
+
+# Professional palette (not overly saturated)
+COLOR_PIR = "#2563EB"          # blue
+COLOR_DEBT = "#DC2626"         # red
+COLOR_ENVELOPE = "#6B7280"     # neutral gray
+
+# Risk band colors (very light, audit style)
+BAND_GREEN = "#ECFDF5"
+BAND_YELLOW = "#FFFBEB"
+BAND_RED = "#FEF2F2"
+
+
+# ============================================================
+# --- Confidence Envelope (validator-weighted)
+# ============================================================
+
+def compute_pir_confidence_envelope(
+    pir_curve: np.ndarray,
+    validator_score: float,
+    window: int = 15,
+    k: float = 2.0,
+):
+    """
+    Compute validator-weighted confidence envelope.
+
+    Parameters
+    ----------
+    pir_curve : (T,)
+    validator_score : float in [0,1]
+        Higher = better data quality → narrower band
+    window : rolling std window
+    k : uncertainty amplification factor
+
+    Returns
+    -------
+    upper, lower : arrays
+    """
+
+    if len(pir_curve) < 3:
+        return pir_curve, pir_curve
+
+    # rolling std (robust, no pandas dependency)
+    pad = window // 2
+    padded = np.pad(pir_curve, (pad, pad), mode="edge")
+
+    rolling_std = np.zeros_like(pir_curve)
+    for i in range(len(pir_curve)):
+        segment = padded[i:i + window]
+        rolling_std[i] = np.std(segment)
+
+    # --- validator weighting (KEY DESIGN) ---
+    validator_score = float(np.clip(validator_score, 0.0, 1.0))
+    uncertainty_scale = 1.0 + k * (1.0 - validator_score)
+
+    envelope_width = rolling_std * uncertainty_scale
+
+    upper = np.clip(pir_curve + envelope_width, 0.0, 1.0)
+    lower = np.clip(pir_curve - envelope_width, 0.0, 1.0)
+
+    return upper, lower
+
+
+# ============================================================
+# --- Risk Bands (Diagnostic Risk Thresholding)
+# ============================================================
+
+def _draw_risk_bands(ax):
+    """Draw Green / Yellow / Red background bands."""
+
+    # Green zone
+    ax.axhspan(0.7, 1.0, color=BAND_GREEN, alpha=0.6, zorder=0)
+
+    # Yellow zone
+    ax.axhspan(0.4, 0.7, color=BAND_YELLOW, alpha=0.6, zorder=0)
+
+    # Red zone
+    ax.axhspan(0.0, 0.4, color=BAND_RED, alpha=0.6, zorder=0)
+
+
+# ============================================================
+# --- Main Plot Function (Production)
+# ============================================================
 
 def plot_pir_evolution(
     pir_t,
@@ -10,113 +98,131 @@ def plot_pir_evolution(
     onset_info,
     save_dir,
     prefix="sipa_audit",
-    enable_drt=True,  # 🔥 Diagnostic Risk Thresholding (default ON)
+    validator_score=0.95,
 ):
     """
     Generate SIPA Physical Integrity evolution figure.
 
-    Features:
-    - PIR(t) curve
-    - Physical Debt(t) curve
-    - Risk threshold line
-    - Integrity degradation onset marker
-    - 🔥 Diagnostic Risk Thresholding (background bands)
-
-    Returns:
-        (png_path, pdf_path)
+    Features
+    --------
+    ✓ Diagnostic Risk Thresholding (background bands)
+    ✓ PIR curve
+    ✓ Physical Debt curve
+    ✓ Validator-weighted confidence envelope
+    ✓ Integrity onset marker
+    ✓ PNG + PDF export
     """
 
-    # ===============================
-    # 🔒 Input validation
-    # ===============================
-    if pir_t is None or len(pir_t) == 0:
-        raise ValueError("pir_t is empty")
+    pir_t = np.asarray(pir_t, dtype=float)
+    debt_t = np.asarray(debt_t, dtype=float)
 
-    if debt_t is None or len(debt_t) == 0:
-        raise ValueError("debt_t is empty")
-
-    if dt <= 0:
-        raise ValueError("dt must be positive")
-
-    # length alignment (robust against mismatch)
-    n = min(len(pir_t), len(debt_t))
-    pir_t = np.asarray(pir_t[:n])
-    debt_t = np.asarray(debt_t[:n])
-
-    t = np.arange(n) * dt
+    t = np.arange(len(pir_t)) * dt
 
     save_dir = Path(save_dir)
     save_dir.mkdir(parents=True, exist_ok=True)
 
-    # ===============================
-    # 🎨 Figure
-    # ===============================
-    plt.figure(figsize=(7, 4.5))
+    # =========================================================
+    # Figure setup (ICRA/IEEE safe)
+    # =========================================================
+    plt.figure(figsize=(6.0, 4.0))
+    ax = plt.gca()
 
-    # ===============================
-    # 🔥 Diagnostic Risk Thresholding
-    # ===============================
-    if enable_drt:
-        y_min = min(np.min(pir_t), np.min(debt_t))
-        y_max = max(np.max(pir_t), np.max(debt_t))
+    # =========================================================
+    # Background risk bands
+    # =========================================================
+    if ENABLE_RISK_BANDS:
+        _draw_risk_bands(ax)
 
-        # Green band (stable)
-        plt.axhspan(0.75, y_max, alpha=0.08, color="green", label="_nolegend_")
+    # =========================================================
+    # Confidence envelope (MIDDLE LAYER)
+    # =========================================================
+    if ENABLE_CONFIDENCE_ENVELOPE and len(pir_t) > 5:
+        upper, lower = compute_pir_confidence_envelope(
+            pir_curve=pir_t,
+            validator_score=validator_score,
+        )
 
-        # Yellow band (marginal)
-        plt.axhspan(0.5, 0.75, alpha=0.08, color="gold", label="_nolegend_")
+        ax.fill_between(
+            t,
+            lower,
+            upper,
+            color=COLOR_ENVELOPE,
+            alpha=0.22,
+            linewidth=0,
+            label="Confidence Envelope",
+            zorder=2,
+        )
 
-        # Red band (risk)
-        plt.axhspan(y_min, 0.5, alpha=0.08, color="red", label="_nolegend_")
-
-    # ===============================
-    # 📈 Curves
-    # ===============================
-    plt.plot(t, pir_t, linewidth=2.2, label="PIR(t)")
-    plt.plot(
+    # =========================================================
+    # PIR curve (TOP LAYER)
+    # =========================================================
+    ax.plot(
         t,
-        debt_t,
-        linestyle="--",
-        linewidth=1.8,
-        label="Physical Debt(t)",
+        pir_t,
+        color=COLOR_PIR,
+        linewidth=2.2,
+        label="PIR(t)",
+        zorder=3,
     )
 
-    # ===============================
-    # 🚨 Risk threshold
-    # ===============================
-    plt.axhline(
+    # =========================================================
+    # Physical debt curve
+    # =========================================================
+    if len(debt_t) == len(pir_t):
+        ax.plot(
+            t,
+            debt_t,
+            linestyle="--",
+            color=COLOR_DEBT,
+            linewidth=1.6,
+            alpha=0.9,
+            label="Physical Debt(t)",
+            zorder=3,
+        )
+
+    # =========================================================
+    # Risk threshold line
+    # =========================================================
+    ax.axhline(
         0.5,
         linestyle=":",
-        linewidth=1.5,
+        linewidth=1.2,
+        color="black",
+        alpha=0.6,
         label="Risk Threshold",
+        zorder=1,
     )
 
-    # ===============================
-    # 📍 Onset marker (robust)
-    # ===============================
-    if onset_info is not None and isinstance(onset_info, dict):
-        onset_time = onset_info.get("time_sec", None)
-        if onset_time is not None:
-            plt.axvline(
-                onset_time,
-                linestyle="-.",
-                linewidth=1.5,
-                label="Integrity Degradation Onset",
-            )
+    # =========================================================
+    # Onset marker
+    # =========================================================
+    if onset_info is not None and "time_sec" in onset_info:
+        ax.axvline(
+            onset_info["time_sec"],
+            linestyle="-.",
+            linewidth=1.6,
+            color="black",
+            alpha=0.8,
+            label="Integrity Degradation Onset",
+            zorder=4,
+        )
 
-    # ===============================
-    # 🧾 Labels
-    # ===============================
-    plt.xlabel("Time (s)")
-    plt.ylabel("Score")
-    plt.title("SIPA Physical Integrity Evolution")
+    # =========================================================
+    # Labels & styling
+    # =========================================================
+    ax.set_xlabel("Time (s)")
+    ax.set_ylabel("Score")
+    ax.set_title("SIPA Physical Integrity Evolution")
 
-    plt.legend(frameon=True)
-    plt.grid(True, alpha=0.3)
+    ax.set_xlim(left=0)
+    ax.set_ylim(0.0, 1.02)
 
-    # ===============================
-    # 💾 Save
-    # ===============================
+    ax.grid(True, alpha=0.25)
+    ax.legend(frameon=True)
+
+    # =========================================================
+    # Save outputs
+    # =========================================================
     png_path = save_dir / f"{prefix}_pir_evolution.png"
     pdf_path = save_dir / f"{prefix}_pir_evolution.pdf"
 
