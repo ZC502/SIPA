@@ -1,3 +1,22 @@
+# ============================================================
+# SIPA path bootstrap (robust repo-local imports)
+# ============================================================
+
+import sys
+from pathlib import Path
+
+_THIS_FILE = Path(__file__).resolve()
+_REPO_ROOT = _THIS_FILE.parents[1]
+
+# Add repo root for absolute imports
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+# Add octonion extension if present
+_EXT_PATH = _REPO_ROOT / "exts" / "octonion_time"
+if _EXT_PATH.exists() and str(_EXT_PATH) not in sys.path:
+    sys.path.insert(0, str(_EXT_PATH))
+
 #!/usr/bin/env python3
 """
 SIPA One-Click Audit CLI (Production)
