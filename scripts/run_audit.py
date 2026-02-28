@@ -1,47 +1,51 @@
 #!/usr/bin/env python3
 """
-SIPA One-Click Audit CLI (Production)
+SIPA: Spatial Intelligence Physical Audit
+----------------------------------------
 
-Pipeline:
-    CSV → Validator → Residual Auditor → Debt/PIR → Visualization → Verdict
+A trajectory-level physical consistency diagnostic tool based on
+the Non-Associative Residual Hypothesis (NARH).
 
-This script is intentionally thin and acts as the orchestration layer.
+License:
+- Research use permitted with attribution.
+- Commercial use requires a separate license agreement.
+
+Patent status: pending.
 """
 
 from __future__ import annotations
 
-# ============================================================
-# SIPA path bootstrap (robust repo-local imports)
-# ============================================================
-
 import sys
+import argparse
 from pathlib import Path
+from typing import Optional
 
+# ============================================================
+# Phase 0 — Bootstrap (robust repo-local imports)
+# ============================================================
 
 def _bootstrap_repo() -> Path:
     """
-    Robustly locate repo root and patch sys.path.
-
-    Works whether run from:
-    - repo root
-    - scripts/
-    - installed entrypoint
+    Ensure the repository root and local extensions are discoverable
+    when executing as a standalone script.
     """
     this_file = Path(__file__).resolve()
 
-    # heuristic: repo root contains "scripts"
+    # Locate repo root (folder containing "scripts")
+    repo_root = None
     for parent in [this_file.parent, *this_file.parents]:
         if (parent / "scripts").exists():
             repo_root = parent
             break
-    else:
-        repo_root = this_file.parent  # fallback
 
-    # add repo root
+    if repo_root is None:
+        repo_root = this_file.parent
+
+    # Add repo root to sys.path
     if str(repo_root) not in sys.path:
         sys.path.insert(0, str(repo_root))
 
-    # add octonion extension if present
+    # Add octonion extension if present
     ext_path = repo_root / "exts" / "octonion_time"
     if ext_path.exists() and str(ext_path) not in sys.path:
         sys.path.insert(0, str(ext_path))
@@ -51,182 +55,215 @@ def _bootstrap_repo() -> Path:
 
 _REPO_ROOT = _bootstrap_repo()
 
-# ============================================================
-# Standard imports
-# ============================================================
-
-import argparse
-from typing import Optional
 
 # ============================================================
-# Local modules (after bootstrap!)
+# Phase 1 — Core Imports
 # ============================================================
 
-from scripts.sipa_video_auditor import run_residual_audit
-from scripts.calculate_debt import compute_debt_and_pir
-from scripts.audit_visualization import plot_pir_evolution
+try:
+    from scripts.sipa_video_auditor import run_residual_audit
+    from scripts.calculate_debt import compute_debt_and_pir
+    from scripts.audit_visualization import plot_pir_evolution
+except ImportError as e:
+    print(f"[SIPA][FATAL] Module import failed: {e}", file=sys.stderr)
+    sys.exit(1)
 
 
 # ============================================================
-# Optional lightweight validator
+# Phase 2 — Lightweight Validator
 # ============================================================
 
 def validate_csv_sanity(csv_path: Path) -> float:
     """
-    Returns a data quality score in [0, 1].
+    Compute a conservative data integrity score in [0,1].
 
-    Intentionally conservative and cheap.
+    Checks:
+    - Required columns
+    - NaNs
+    - Minimal length
     """
-    import pandas as pd
+    try:
+        import pandas as pd
 
-    df = pd.read_csv(csv_path)
+        df = pd.read_csv(csv_path)
 
-    if len(df) < 10:
-        return 0.3
+        required = {"x", "y", "z", "qx", "qy", "qz", "qw"}
+        if not required.issubset(df.columns):
+            return 0.1
 
-    nan_ratio = df.isna().mean().mean()
+        if df.isnull().values.any():
+            return 0.4
 
-    if nan_ratio > 0.2:
-        return 0.4
-    if nan_ratio > 0.05:
-        return 0.7
+        if len(df) < 10:
+            return 0.3
 
-    return 0.95
+        return 0.95
+
+    except Exception:
+        return 0.0
 
 
 # ============================================================
-# Core runner
+# Phase 3 — Orchestration Engine
 # ============================================================
 
-def run_audit(
+def execute_pipeline(
     input_csv: Path,
     output_dir: Path,
     dt: float,
-    validator_score: Optional[float],
+    validator_override: Optional[float],
+    verbose: bool,
+    branding: bool,
 ):
     if not input_csv.exists():
-        raise FileNotFoundError(f"Input CSV not found: {input_csv}")
+        raise FileNotFoundError(f"Input file not found: {input_csv}")
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    print("\n[SIPA] =========================================")
-    print("[SIPA] Starting Physical Integrity Audit")
-    print(f"[SIPA] Input: {input_csv}")
-    print(f"[SIPA] Output: {output_dir}")
-    print("[SIPA] =========================================")
+    def log(msg: str):
+        if verbose:
+            print(msg)
 
-    # --------------------------------------------------------
-    # 1. Validator
-    # --------------------------------------------------------
-    if validator_score is None:
-        print("[SIPA] Running data validator...")
-        validator_score = validate_csv_sanity(input_csv)
+    # Header
+    if branding:
+        print("\n" + "=" * 60)
+        print("SIPA — Spatial Intelligence Physical Audit")
+        print("Non-Associative Residual Hypothesis (NARH) Evaluation")
+        print("=" * 60)
     else:
-        print("[SIPA] Using user-provided validator score.")
-
-    print(f"[SIPA] Data Quality Score: {validator_score:.2f}")
+        log("[SIPA] Starting audit...")
 
     # --------------------------------------------------------
-    # 2. Residual auditor
+    # 1. Data Validation
     # --------------------------------------------------------
-    print("[SIPA] Running residual auditor...")
+    score = (
+        validator_override
+        if validator_override is not None
+        else validate_csv_sanity(input_csv)
+    )
+
+    log(f"[SIPA] Data integrity score: {score:.2f}")
+
+    # --------------------------------------------------------
+    # 2. Residual Audit
+    # --------------------------------------------------------
+    log("[SIPA] Running residual audit...")
     residual_summary = run_residual_audit(input_csv)
 
     # --------------------------------------------------------
-    # 3. Debt + PIR
+    # 3. PIR Computation
     # --------------------------------------------------------
-    print("[SIPA] Computing physical debt and PIR...")
+    log("[SIPA] Computing Physical Integrity Rating (PIR)...")
+
     pir_t, debt_t, onset_info = compute_debt_and_pir(
         csv_path=input_csv,
         dt=dt,
         residual_summary=residual_summary,
-        data_quality=validator_score,
+        data_quality=score,
     )
 
     # --------------------------------------------------------
     # 4. Visualization
     # --------------------------------------------------------
-    print("[SIPA] Rendering diagnostic figure...")
+    log("[SIPA] Generating diagnostic visualization...")
+
     plot_pir_evolution(
         pir_t=pir_t,
         debt_t=debt_t,
         dt=dt,
         onset_info=onset_info,
         save_dir=output_dir,
-        validator_score=validator_score,
+        validator_score=score,
     )
 
     # --------------------------------------------------------
-    # 5. Terminal verdict
+    # 5. Final Verdict
     # --------------------------------------------------------
     final_pir = float(pir_t[-1])
 
-    if final_pir > 0.8:
-        grade = "A (PHYSICALLY CONSISTENT)"
-    elif final_pir > 0.6:
-        grade = "B (STABLE)"
-    elif final_pir > 0.4:
-        grade = "C (SPECULATIVE)"
+    if final_pir >= 0.85:
+        grade = "A"
+    elif final_pir >= 0.70:
+        grade = "B"
+    elif final_pir >= 0.50:
+        grade = "C"
+    elif final_pir >= 0.30:
+        grade = "D"
     else:
-        grade = "D (PHYSICALLY UNSTABLE)"
+        grade = "F"
 
-    print("\n[SIPA] FINAL RATING:", grade)
-    print(f"[SIPA] Final PIR: {final_pir:.3f}")
-    print(f"[SIPA] Outputs saved to: {output_dir}")
-    print("[SIPA] =========================================\n")
+    print("\n[SIPA] Final PIR:", f"{final_pir:.4f}")
+    print("[SIPA] Rating:", grade)
+    print("[SIPA] Output directory:", output_dir.resolve())
+
+    if branding:
+        print("=" * 60 + "\n")
 
 
 # ============================================================
-# CLI
+# Phase 4 — CLI
 # ============================================================
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="SIPA Physical Integrity Auditor"
+        description="SIPA — Spatial Intelligence Physical Audit"
     )
 
     parser.add_argument(
         "--input",
         type=Path,
         required=True,
-        help="Input SIPA CSV log",
+        help="Path to SIPA-compatible CSV trajectory",
     )
 
     parser.add_argument(
         "--out",
         type=Path,
         default=Path("outputs"),
-        help="Output directory",
+        help="Output directory (default: outputs/)",
     )
 
     parser.add_argument(
         "--dt",
         type=float,
         default=0.01,
-        help="Simulation timestep (seconds)",
+        help="Timestep in seconds (if no timestamp column)",
     )
 
     parser.add_argument(
         "--validator-score",
         type=float,
         default=None,
-        help="Optional override for data quality score (0–1)",
+        help="Optional override for data integrity score [0–1]",
+    )
+
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Enable detailed logging",
+    )
+
+    parser.add_argument(
+        "--branding",
+        action="store_true",
+        help="Enable branded header output",
     )
 
     return parser.parse_args()
 
 
 def main():
-    try:
-        args = parse_args()
+    args = parse_args()
 
-        run_audit(
+    try:
+        execute_pipeline(
             input_csv=args.input,
             output_dir=args.out,
             dt=args.dt,
-            validator_score=args.validator_score,
+            validator_override=args.validator_score,
+            verbose=args.verbose,
+            branding=args.branding,
         )
-
     except Exception as e:
         print(f"[SIPA][ERROR] {e}", file=sys.stderr)
         sys.exit(1)
