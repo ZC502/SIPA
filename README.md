@@ -274,6 +274,16 @@ As Spatial Intelligence moves towards safety-critical sectors (Autonomous Drivin
 
 ---
 
+📢 **For the Community: Audit the World**
+
+Is that Spatial AI demo physically real or just a "visual hallucination"? Don't take their word for it. **Run the Audit**.
+
+SIPA empowers every researcher and enthusiast to quantify the "Physical Debt" of any world model. Whether it's a high-budget simulation or a generative video, just export the trajectory and get the **PIR (Physical Integrity Rating)**.
+
+Let's build a transparent baseline for the future of Spatial Intelligence.
+
+---
+
 ⚖️ **Intellectual Property & Commercial Licensing**
 
 This repository introduces a novel paradigm in physical auditing based on Non-Associative Octonion Manifolds.
