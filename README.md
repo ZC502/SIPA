@@ -266,6 +266,16 @@ As Spatial Intelligence moves towards safety-critical sectors (Autonomous Drivin
 
 ---
 
+⚖️ **Intellectual Property & Commercial Licensing**
+
+This repository introduces a novel paradigm in physical auditing based on Non-Associative Octonion Manifolds.
+- Intellectual Property: All core algorithms, including the NARH (Non-Associative Residual Hypothesis) and its implementation via octonion associators, are the proprietary intellectual property of the author (Patent Filing in Preparation).
+- Academic Use: Non-commercial research and academic evaluation are permitted. Please cite this repository and the referenced works accordingly.
+- Commercial/Production Use: Implementation of SIPA protocols in any revenue-generating simulation pipeline, robotic foundation model training, or commercial world model deployment (including data augmentation for LLM/Video-AI) requires a Commercial License.
+- Strategic Inquiries: For inquiries regarding full IP acquisition, strategic investment, or dedicated implementation support for enterprise-grade spatial intelligence, please contact:
+Strategic Inquiry & Business Contact: > 📧 [liuzc19761204@gmail.com]
+
+---
 📚 **Recommended Citation**
 
 If SIPA is integrated into your research or technical due diligence pipeline, please cite:
