@@ -87,7 +87,7 @@ Video → Pose Estimation → 7-DoF CSV → SIPA
 
 SIPA is designed for rapid integration into automated evaluation pipelines (CI/CD) or manual technical audits.
 
-Typical runtime: < 3 seconds for 1k-frame trajectory on CPU.
+Typical runtime: ~1–3 seconds for a 1k-frame trajectory on a modern laptop CPU (single-threaded).
 
 **1. Environment Setup**
 
@@ -106,18 +106,19 @@ Audit a smooth, physically solvent trajectory.
 ```
 Bash
 python scripts/run_audit.py --input demo/sipa_minimal_trajectory.csv --dt 0.01
-# Expected Output: FINAL RATING [A/B], PIR ≈ 0.85–0.95, No IDO marker.
+# Expected behavior: Rating typically A–B, PIR ≈ 0.85–0.95
 ```
 ❌ **Case B: Physical Hallucination (NARH Breach)**
 Audit a trajectory with intentional causal collapse (spatial leaps/jitter).
 ```
 Bash
 python scripts/run_audit.py --input demo/sipa_corrupted_trajectory.csv --dt 0.01
-# Expected Output: FINAL RATING [D/F], PIR < 0.50, RED Onset Marker (IDO) detected.
+# Expected behavior: Rating typically D–F, PIR < 0.50, IDO detected
 ```
 **Note:** 
 - IDO is designed as an empirical early-warning indicator rather than a formal change-point guarantee.
 - As with any post-hoc diagnostic, carefully constructed adversarial trajectories may partially evade detection; SIPA is intended as a high-sensitivity screening tool rather than a formal physical verifier.
+- Performance may vary depending on trajectory smoothness, sampling rate, and sensor noise.
 
 **3. Forensic Interpretation**
 
@@ -176,6 +177,7 @@ def export_sipa_csv(path, positions, quaternions):
     Export trajectory to SIPA-compatible CSV format.
     :param positions: (T, 3) numpy array
     :param quaternions: (T, 4) numpy array [qx, qy, qz, qw]
+    Expected dtype: float32 or float64
     """
     import pandas as pd
     import numpy as np
@@ -190,6 +192,12 @@ def export_sipa_csv(path, positions, quaternions):
     })
     df.to_csv(path, index=False)
     print(f"[SIPA] Trajectory exported to {path}")
+
+Optional flags:
+
+--verbose      Enable detailed logs  
+--branding     Enable formatted header output
+
 ```
 
 ---
