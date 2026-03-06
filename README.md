@@ -119,6 +119,174 @@ Where
 
 ---
 
+# 🧠 Architecture Overview
+
+SIPA evaluates the **physical consistency of spatial trajectories** using a lightweight algebraic diagnostic pipeline.
+
+```markdown
+Trajectory (7-DoF CSV)
+          │
+          ▼
+Residual Audit
+(Octonion Associator)
+          │
+          ▼
+Physical Debt Accumulation
+(Log-normal residual integration)
+          │
+          ▼
+Physical Integrity Rating (PIR)
+          │
+          ▼
+Integrity Degradation Onset (IDO)
+```
+```
+Input  : Pose trajectory (x,y,z,qx,qy,qz,qw)
+Output : PIR score + diagnostic visualization
+Runtime: < 3 seconds for ~1k frames on CPU
+```
+
+**Pipeline Stages**
+
+| Stage                 | Description                                                              |
+| --------------------- | ------------------------------------------------------------------------ |
+| **Residual Audit**    | Computes octonion associator residuals to detect algebraic inconsistency |
+| **Debt Accumulation** | Integrates residuals into a cumulative physical debt signal              |
+| **PIR Estimation**    | Converts debt and data quality into a normalized integrity score         |
+| **IDO Detection**     | Identifies the onset of structural physical collapse                     |
+
+The pipeline is **engine-agnostic** and requires only motion trajectories.
+
+No simulator internals are required.
+
+---
+
+# 🧪 Physics Hallucination Benchmark
+
+SIPA includes minimal benchmark trajectories to demonstrate detection of **physical hallucinations**.
+
+| Dataset | Description | Frames | Expected PIR | Expected Rating |
+|-------|-------------|-------|-------------|----------------|
+| `sipa_minimal_trajectory.csv` | Smooth physically consistent motion | ~1000 | 0.85 – 0.95 | A / B |
+| `sipa_corrupted_trajectory.csv` | Injected spatial jitter / teleportation | ~1000 | < 0.50 | D / F |
+
+Run benchmark:
+
+```bash
+bash scripts/run_demo.sh
+```
+Expected behavior:
+| Metric        | Normal Motion | Corrupted Motion   |
+| ------------- | ------------- | ------------------ |
+| PIR Stability | Stable        | Collapse           |
+| Residual Debt | Low           | Rapid accumulation |
+| IDO Marker    | None          | Triggered          |
+
+This benchmark illustrates the **Non-Associative Residual Hypothesis (NARH):**
+
+physically inconsistent trajectories accumulate residual algebraic error that cannot be reconciled under non-associative composition.
+
+---
+
+# 🧪 Adversarial Trajectory Test
+
+A common failure mode of generative world models is **physically inconsistent motion that remains visually smooth**.
+
+These trajectories may appear plausible to humans but violate deeper **causal structure**.
+
+SIPA includes an adversarial demonstration to illustrate this phenomenon.
+
+---
+
+## Concept
+
+In the adversarial trajectory:
+
+- Motion appears **smooth and continuous**
+- No obvious teleportation occurs
+- Position curves remain visually plausible
+
+However:
+
+- Hidden temporal inconsistency is injected
+- Small orientation drift accumulates
+- Algebraic associativity is violated
+
+This produces **residual debt accumulation** detectable by SIPA.
+
+---
+
+## Visual vs Physical Consistency
+
+| Property | Human Visual Inspection | SIPA Physical Audit |
+|--------|--------------------------|--------------------|
+| Motion Smoothness | ✓ Appears smooth | ✓ Smooth |
+| Teleportation | ✗ None visible | ✓ None |
+| Orientation Drift | Hard to detect | Detected |
+| Algebraic Consistency | Not observable | Violated |
+| PIR Stability | Appears normal | **Collapses over time** |
+
+---
+
+## Running the Test
+
+If an adversarial trajectory is available:
+
+```bash
+python scripts/run_audit.py \
+  --input demo/sipa_adversarial_trajectory.csv \
+  --dt 0.01 \
+  --branding
+```
+Expected behavior:
+```
+Initial PIR: ~0.85
+Gradual degradation
+IDO triggered mid-sequence
+Final rating: C / D
+```
+Unlike the corrupted trajectory (which fails abruptly),
+the adversarial case demonstrates **slow causal debt accumulation**.
+
+---
+
+**Why This Matters**
+
+Many modern spatial AI systems (including neural world models and video generators) can produce motion that is:
+- **visually coherent**
+- **temporally smooth**
+- yet **physically inconsistent**
+
+Traditional metrics such as:
+- velocity smoothness
+- jerk minimization
+- pixel consistency
+
+may fail to detect these errors.
+
+SIPA detects them because the **octonion associator exposes non-associative causal drift.**
+
+---
+
+**Interpretation**
+
+The adversarial test illustrates the central claim of the
+**Non-Associative Residual Hypothesis (NARH)**:
+
+If a trajectory violates physical causal structure,
+algebraic associativity will accumulate residual error over time.
+
+SIPA measures this accumulation as **Physical Debt**, which lowers the **Physical Integrity Rating (PIR)** and triggers **Integrity Degradation Onset (IDO)**.
+
+| Test Type | Visual Smoothness | Physical Validity | SIPA Detection |
+|-----------|------------------|------------------|---------------|
+| Normal Motion | ✓ | ✓ | Stable PIR |
+| Teleportation | ✗ | ✗ | Immediate PIR collapse |
+| Adversarial Drift | ✓ | ✗ | Gradual PIR collapse |
+
+
+---
+
 # 🧠 Core Methodology
 
 **Non-Associative Residual Hypothesis (NARH)**
