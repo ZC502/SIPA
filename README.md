@@ -1,6 +1,213 @@
 # SIPA: Spatial Intelligence Physical Audit ⚖️
 *A Trajectory-Level Diagnostic Framework for Quantitative Physical Consistency in Spatial AI.*
 
+SIPA has zero heavy dependencies and runs entirely on CPU.
+
+---
+
+## 🚀 Quick Start (30-Second Demo)
+
+SIPA can audit a trajectory in seconds.  
+Run the following commands to reproduce the baseline examples.
+
+### 1️⃣ Clone Repository
+
+```bash
+git clone https://github.com/ZC502/SIPA.git
+cd SIPA
+```
+
+### 2️⃣ Install Dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+Recommended Python version:
+
+```
+Python >= 3.8
+```
+
+### 3️⃣ Run the Audit
+
+#### ✅ Case A — Physically Consistent Trajectory
+
+```bash
+python scripts/run_audit.py \
+    --input demo/sipa_minimal_trajectory.csv \
+    --dt 0.01
+```
+
+Expected result:
+
+```
+FINAL RATING: A/B
+PIR ≈ 0.85 – 0.95
+No IDO marker detected
+```
+
+---
+
+#### ❌ Case B — Physical Hallucination (Causal Break)
+
+```bash
+python scripts/run_audit.py \
+    --input demo/sipa_corrupted_trajectory.csv \
+    --dt 0.01
+```
+
+Expected result:
+
+```
+FINAL RATING: D/F
+PIR < 0.50
+RED Onset Marker (IDO) detected
+```
+
+---
+
+### 📊 Output Artifacts
+
+All results are saved to:
+
+```
+outputs/
+```
+
+Generated files include:
+
+- `sipa_audit_pir_evolution.png`  
+  Diagnostic sheet showing:
+  - PIR evolution
+  - Confidence envelope
+  - Integrity Degradation Onset (IDO)
+
+- Terminal summary  
+  A credit-style rating for rapid technical evaluation.
+
+---
+
+### ⏱ Runtime
+
+Typical runtime:
+
+```
+< 3 seconds for 1k frames on CPU
+```
+
+SIPA is designed to integrate easily into:
+
+- CI/CD pipelines
+- simulation validation
+- world-model diagnostics
+
+---
+
+## 🧪 1-Minute Physical Hallucination Demo
+
+This short demo illustrates how SIPA detects physical inconsistency in motion trajectories.
+
+We compare two trajectories:
+| Case                       | Description                             | Expected Result                    |
+| -------------------------- | --------------------------------------- | ---------------------------------- |
+| ✅ **Normal Trajectory**    | Smooth physically plausible motion      | PIR remains stable                 |
+| ❌ **Corrupted Trajectory** | Injected spatial jitter / teleportation | PIR collapses and IDO is triggered |
+
+---
+
+**Step 1 — Run a physically consistent trajectory**
+```
+python scripts/run_audit.py \
+  --input demo/sipa_minimal_trajectory.csv \
+  --dt 0.01 \
+  --branding
+``` 
+Expected terminal output (example):
+```
+[SIPA] Final PIR: 0.91
+[SIPA] Rating: A
+```
+Result:
+- PIR curve remains **stable**
+- No **Integrity Degradation Onset (IDO)** detected
+
+Output figure:
+```
+outputs/sipa_audit_pir_evolution.png
+```
+
+---
+
+**Step 2 — Run a corrupted trajectory**
+This trajectory contains **intentional physical hallucinations**
+(spatial jumps / temporal inconsistency).
+```
+python scripts/run_audit.py \
+  --input demo/sipa_corrupted_trajectory.csv \
+  --dt 0.01 \
+  --branding
+```
+Expected terminal output (example):
+```
+[SIPA] Final PIR: 0.32
+[SIPA] Rating: D
+```
+Result:
+- PIR **rapidly degrades**
+- **IDO marker appears**
+- Residual debt accumulates
+
+---
+
+**Expected Behavior**
+| Metric        | Normal Motion | Corrupted Motion |
+| ------------- | ------------- | ---------------- |
+| PIR stability | High          | Collapse         |
+| Residual debt | Low           | Accumulates      |
+| IDO marker    | None          | Triggered        |
+
+This behavior reflects the Non-Associative Residual Hypothesis (NARH):
+Physically inconsistent trajectories accumulate residual error that cannot be reconciled under non-associative composition.
+
+---
+
+**Output Example**
+The diagnostic visualization shows:
+- **PIR evolution**
+- **confidence envelope**
+- **Integrity Degradation Onset (IDO)**
+
+Example output:
+```
+outputs/
+ └── sipa_audit_pir_evolution.png
+```
+
+---
+
+## 📄 Input Format (7-DoF Pose CSV)
+
+SIPA operates on pose trajectories with the following columns:
+
+```
+x,y,z,qx,qy,qz,qw
+```
+
+Example:
+
+```
+x,y,z,qx,qy,qz,qw
+0.00,0.00,0.50,0,0,0,1
+0.01,0.00,0.50,0,0,0,1
+0.02,0.00,0.50,0,0,0,1
+```
+
+Where:
+
+- `(x,y,z)` = position in meters
+- `(qx,qy,qz,qw)` = unit quaternion rotation
+
 ---
 
 ![screenshot](./1-3-2026_github.com.jpeg)
@@ -116,7 +323,7 @@ Typical runtime: ~1–3 seconds for a 1k-frame trajectory on a modern laptop CPU
 
 **1. Environment Setup**
 
-```Bash
+```
 git clone https://github.com/your-repo/SIPA.git
 cd SIPA
 pip install pandas numpy matplotlib
