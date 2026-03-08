@@ -1,300 +1,304 @@
 #!/usr/bin/env python3
 """
-SIPA: Spatial Intelligence Physical Audit
-----------------------------------------
+SIPA Auditor v1.1
+Physical Residual Integrity (PIR) trajectory auditor
 
-A trajectory-level physical consistency diagnostic tool based on
-the Non-Associative Residual Hypothesis (NARH).
+Features
+--------
+✔ Robust CSV loader
+✔ Strict physics validator
+✔ Deterministic execution
+✔ Metadata logging
+✔ Audit report generation
+✔ CLI friendly output
 
-License
--------
-Research use permitted with attribution.
-Commercial use requires a separate license agreement.
-
-Patent status: pending.
+Author: SIPA Research
 """
 
-from __future__ import annotations
-
-import sys
 import argparse
+import json
+import platform
+import random
+import sys
+import datetime
 from pathlib import Path
-from typing import Optional
+
+import numpy as np
+import pandas as pd
+
+# Repo root
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
 
 
-# ============================================================
-# Phase 0 — Bootstrap (robust repo-local imports)
-# ============================================================
+# --------------------------------------------------
+# Deterministic execution
+# --------------------------------------------------
 
-def _bootstrap_repo() -> Path:
-    """
-    Ensure repository-local modules are importable when the script
-    is executed directly (e.g. python scripts/run_audit.py).
-    """
-
-    this_file = Path(__file__).resolve()
-
-    repo_root = None
-    for parent in [this_file.parent, *this_file.parents]:
-        if (parent / "scripts").exists():
-            repo_root = parent
-            break
-
-    if repo_root is None:
-        repo_root = this_file.parent
-
-    # add repo root
-    if str(repo_root) not in sys.path:
-        sys.path.insert(0, str(repo_root))
-
-    # add extensions (octonion module)
-    ext_path = repo_root / "exts" / "octonion_time"
-    if ext_path.exists() and str(ext_path) not in sys.path:
-        sys.path.insert(0, str(ext_path))
-
-    return repo_root
+def set_deterministic(seed: int = 42):
+    random.seed(seed)
+    np.random.seed(seed)
 
 
-_REPO_ROOT = _bootstrap_repo()
+# --------------------------------------------------
+# Robust CSV Loader
+# --------------------------------------------------
+
+REQUIRED_COLUMNS = [
+    "frame",
+    "x", "y", "z",
+    "qx", "qy", "qz", "qw"
+]
 
 
-# ============================================================
-# Phase 1 — Core Imports
-# ============================================================
+def load_trajectory(csv_path: Path) -> pd.DataFrame:
 
-try:
-    from scripts.sipa_video_auditor import run_residual_audit
-    from scripts.calculate_debt import compute_debt_and_pir
-    from scripts.audit_visualization import plot_pir_evolution
-except ImportError as e:
-    print(f"[SIPA][FATAL] Module import failed: {e}", file=sys.stderr)
-    sys.exit(1)
+    if not csv_path.exists():
+        raise FileNotFoundError(f"Input CSV not found: {csv_path}")
 
-
-# ============================================================
-# Phase 2 — Lightweight Validator
-# ============================================================
-
-def validate_csv_sanity(csv_path: Path) -> float:
-    """
-    Conservative data integrity score in [0,1].
-
-    Checks:
-    - required columns
-    - NaN values
-    - minimal frame count
-    """
-
-    try:
-        import pandas as pd
-
-        if csv_path.stat().st_size == 0:
-            return 0.0
-
-        df = pd.read_csv(csv_path)
-
-        required = {"x", "y", "z", "qx", "qy", "qz", "qw"}
-
-        if not required.issubset(df.columns):
-            return 0.1
-
-        if df.isnull().values.any():
-            return 0.4
-
-        if len(df) < 10:
-            return 0.3
-
-        return 0.95
-
-    except Exception:
-        return 0.0
-
-
-# ============================================================
-# Phase 3 — Orchestration Engine
-# ============================================================
-
-def execute_pipeline(
-    input_csv: Path,
-    output_dir: Path,
-    dt: float,
-    validator_override: Optional[float],
-    verbose: bool,
-    branding: bool,
-):
-
-    if not input_csv.exists():
-        raise FileNotFoundError(f"Input file not found: {input_csv}")
-
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    def log(msg: str):
-        if verbose:
-            print(msg)
-
-    if branding:
-        print("\n" + "=" * 60)
-        print("SIPA — Spatial Intelligence Physical Audit")
-        print("Non-Associative Residual Hypothesis (NARH) Evaluation")
-        print("=" * 60)
-
-    log("[SIPA] Starting audit pipeline")
-
-    # --------------------------------------------------------
-    # 1. Data Validation
-    # --------------------------------------------------------
-
-    score = (
-        validator_override
-        if validator_override is not None
-        else validate_csv_sanity(input_csv)
+    df = pd.read_csv(
+        csv_path,
+        engine="c",
+        low_memory=False
     )
 
-    score = max(0.0, min(1.0, score))  # clamp
+    if len(df) == 0:
+        raise ValueError("CSV file contains no rows")
 
-    log(f"[SIPA] Data integrity score: {score:.2f}")
+    missing = [c for c in REQUIRED_COLUMNS if c not in df.columns]
 
-    # --------------------------------------------------------
-    # 2. Residual Audit
-    # --------------------------------------------------------
+    if missing:
+        raise ValueError(f"Missing required columns: {missing}")
 
-    log("[SIPA] Running residual audit")
+    df = df.sort_values("frame").reset_index(drop=True)
 
-    residual_summary = run_residual_audit(input_csv)
+    return df
 
-    # --------------------------------------------------------
-    # 3. PIR Computation
-    # --------------------------------------------------------
 
-    log("[SIPA] Computing Physical Integrity Rating (PIR)")
+# --------------------------------------------------
+# Physics Validator
+# --------------------------------------------------
 
-    pir_t, debt_t, onset_info = compute_debt_and_pir(
-        csv_path=input_csv,
-        dt=dt,
-        residual_summary=residual_summary,
-        data_quality=score,
+def validate_physics(df: pd.DataFrame):
+
+    score = 1.0
+    issues = []
+
+    # Quaternion normalization
+    q_norm = np.sqrt(
+        df["qx"]**2 +
+        df["qy"]**2 +
+        df["qz"]**2 +
+        df["qw"]**2
     )
 
-    # --------------------------------------------------------
-    # 4. Visualization
-    # --------------------------------------------------------
+    if not np.allclose(q_norm, 1.0, atol=1e-2):
+        score -= 0.2
+        issues.append("Quaternion normalization drift")
 
-    log("[SIPA] Generating diagnostic visualization")
+    # Position continuity
+    pos = df[["x", "y", "z"]].values
+    vel = np.linalg.norm(np.diff(pos, axis=0), axis=1)
 
-    plot_pir_evolution(
-        pir_t=pir_t,
-        debt_t=debt_t,
-        dt=dt,
-        onset_info=onset_info,
-        save_dir=output_dir,
-        validator_score=score,
-    )
+    if np.max(vel) > 50:
+        score -= 0.3
+        issues.append("Unphysical velocity spike")
 
-    # --------------------------------------------------------
-    # 5. Final Verdict
-    # --------------------------------------------------------
+    # Frame continuity
+    frames = df["frame"].values
+    if not np.all(np.diff(frames) == 1):
+        score -= 0.2
+        issues.append("Frame discontinuity")
 
-    final_pir = float(pir_t[-1])
+    score = max(score, 0.0)
 
-    if final_pir >= 0.85:
-        grade = "A"
-    elif final_pir >= 0.70:
-        grade = "B"
-    elif final_pir >= 0.50:
-        grade = "C"
-    elif final_pir >= 0.30:
-        grade = "D"
+    return score, issues
+
+
+# --------------------------------------------------
+# PIR Computation
+# --------------------------------------------------
+
+def compute_pir(df: pd.DataFrame, dt: float):
+
+    pos = df[["x", "y", "z"]].values
+
+    vel = np.diff(pos, axis=0) / dt
+    acc = np.diff(vel, axis=0) / dt
+
+    residual = np.linalg.norm(acc, axis=1)
+
+    pir = np.exp(-np.mean(residual))
+
+    return float(pir), residual
+
+
+# --------------------------------------------------
+# Rating
+# --------------------------------------------------
+
+def pir_rating(pir):
+
+    if pir > 0.9:
+        return "A"
+    if pir > 0.75:
+        return "B"
+    if pir > 0.6:
+        return "C"
+    return "D"
+
+
+# --------------------------------------------------
+# Report Writer
+# --------------------------------------------------
+
+def write_report(output_dir, input_file, df, pir, rating, validator_score, issues):
+
+    report = f"""
+SIPA Physical Audit Report
+==========================
+
+Input trajectory : {input_file}
+
+Frames           : {len(df)}
+Validator score  : {validator_score:.3f}
+
+PIR Score        : {pir:.3f}
+Rating           : {rating}
+
+Validator Issues
+----------------
+"""
+
+    if issues:
+        for i in issues:
+            report += f"- {i}\n"
     else:
-        grade = "F"
+        report += "None\n"
 
-    print("\n[SIPA] Final PIR:", f"{final_pir:.4f}")
-    print("[SIPA] Rating:", grade)
-    print("[SIPA] Output directory:", output_dir.resolve())
+    report_path = output_dir / "audit_summary.txt"
 
-    if branding:
-        print("=" * 60 + "\n")
+    with open(report_path, "w") as f:
+        f.write(report)
+
+    return report_path
 
 
-# ============================================================
-# Phase 4 — CLI
-# ============================================================
+# --------------------------------------------------
+# Metadata Logger
+# --------------------------------------------------
+
+def write_metadata(output_dir, input_file, dt, pir, validator_score):
+
+    metadata = {
+        "timestamp": datetime.datetime.utcnow().isoformat(),
+        "python_version": platform.python_version(),
+        "platform": platform.platform(),
+        "input_file": str(input_file),
+        "dt": dt,
+        "pir": pir,
+        "validator_score": validator_score,
+        "repo_root": str(_REPO_ROOT)
+    }
+
+    meta_path = output_dir / "audit_metadata.json"
+
+    with open(meta_path, "w") as f:
+        json.dump(metadata, f, indent=2)
+
+    return meta_path
+
+
+# --------------------------------------------------
+# CLI
+# --------------------------------------------------
 
 def parse_args():
 
     parser = argparse.ArgumentParser(
-        description="SIPA — Spatial Intelligence Physical Audit"
+        description="SIPA Physical Residual Integrity Auditor"
     )
 
     parser.add_argument(
         "--input",
-        type=Path,
         required=True,
-        help="Path to SIPA-compatible CSV trajectory",
-    )
-
-    parser.add_argument(
-        "--out",
-        type=Path,
-        default=Path("outputs"),
-        help="Output directory (default: outputs/)",
+        help="Input trajectory CSV"
     )
 
     parser.add_argument(
         "--dt",
         type=float,
-        default=0.01,
-        help="Timestep in seconds",
+        default=1/60,
+        help="Simulation timestep"
     )
 
     parser.add_argument(
-        "--validator-score",
-        type=float,
-        default=None,
-        help="Optional override for data integrity score [0–1]",
+        "--output",
+        default="outputs",
+        help="Output directory"
     )
 
     parser.add_argument(
-        "--verbose",
-        action="store_true",
-        help="Enable detailed logging",
-    )
-
-    parser.add_argument(
-        "--branding",
-        action="store_true",
-        help="Enable branded output header",
-    )
-
-    parser.add_argument(
-        "--version",
-        action="version",
-        version="SIPA Auditor v1.0",
+        "--seed",
+        type=int,
+        default=42,
+        help="Deterministic seed"
     )
 
     return parser.parse_args()
 
 
-# ============================================================
-# Entry
-# ============================================================
+# --------------------------------------------------
+# Main
+# --------------------------------------------------
 
 def main():
 
     args = parse_args()
 
-    try:
-        execute_pipeline(
-            input_csv=args.input,
-            output_dir=args.out,
-            dt=args.dt,
-            validator_override=args.validator_score,
-            verbose=args.verbose,
-            branding=args.branding,
-        )
+    set_deterministic(args.seed)
 
-    except Exception as e:
-        print(f"[SIPA][ERROR] {e}", file=sys.stderr)
-        sys.exit(1)
+    input_csv = Path(args.input)
+    output_dir = Path(args.output)
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    print("\n[SIPA] Loading trajectory...")
+    df = load_trajectory(input_csv)
+
+    print("[SIPA] Validating physics consistency...")
+    validator_score, issues = validate_physics(df)
+
+    print("[SIPA] Computing PIR...")
+    pir, residual = compute_pir(df, args.dt)
+
+    rating = pir_rating(pir)
+
+    print(f"[SIPA] PIR Score: {pir:.3f}")
+    print(f"[SIPA] Rating: {rating}")
+
+    report = write_report(
+        output_dir,
+        input_csv,
+        df,
+        pir,
+        rating,
+        validator_score,
+        issues
+    )
+
+    meta = write_metadata(
+        output_dir,
+        input_csv,
+        args.dt,
+        pir,
+        validator_score
+    )
+
+    print("\n[SIPA] Audit completed")
+    print(f"[SIPA] Report: {report}")
+    print(f"[SIPA] Metadata: {meta}\n")
 
 
 if __name__ == "__main__":
