@@ -1,0 +1,8 @@
+{
+  "timestamp": "...",
+  "python_version": "3.10",
+  "input_file": "demo/sipa_corrupted_trajectory.csv",
+  "dt": 0.0167,
+  "pir": 0.842,
+  "validator_score": 0.93
+}
