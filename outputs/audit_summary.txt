@@ -1,0 +1,10 @@
+SIPA Physical Audit Report
+==========================
+
+Input trajectory : demo/sipa_corrupted_trajectory.csv
+
+Frames           : 512
+Validator score  : 0.93
+
+PIR Score        : 0.84
+Rating           : B
