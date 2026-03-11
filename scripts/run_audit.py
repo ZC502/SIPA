@@ -139,15 +139,17 @@ def compute_pir(df: pd.DataFrame, dt: float):
 # --------------------------------------------------
 
 def pir_rating(pir):
-
-    if pir > 0.9:
+    
+    if pir >= 0.9:
         return "A"
-    if pir > 0.75:
+    elif pir >= 0.75:
         return "B"
-    if pir > 0.6:
+    elif pir >= 0.6:
         return "C"
-    return "D"
-
+    elif pir >= 0.4:
+        return "D"
+    else:
+        return "F" 
 
 # --------------------------------------------------
 # Report Writer
