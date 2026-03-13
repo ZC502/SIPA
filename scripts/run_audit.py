@@ -327,7 +327,7 @@ Validator Issues
 def write_metadata(output_dir,input_file,dt,pir):
 
     meta={
-        "timestamp":datetime.datetime.utcnow().isoformat(),
+        "timestamp":datetime.datetime.now(datetime.UTC).isoformat(),
         "python":platform.python_version(),
         "platform":platform.platform(),
         "input_file":str(input_file),
