@@ -13,19 +13,23 @@ SIPA has **zero heavy dependencies** and runs entirely on CPU.
 
 Clone the repository and run the baseline audit examples.
 
-### 1️⃣ Clone Repository
+### 1. Clone Repository
 
 ```bash
 git clone https://github.com/ZC502/SIPA.git
 cd SIPA
 ```
-### 2️⃣ Install Dependencies
+### 2. Install Dependencies
 ```
 pip install -r requirements.txt
 ```
 Recommended Python version
 ```
 Python >= 3.8
+```
+### 3. Run the physical audit demo
+```
+python scripts/run_audit.py --input demo/sipa_corrupted_trajectory.csv
 ```
 
 ---
