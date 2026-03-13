@@ -9,6 +9,8 @@ SIPA has **zero heavy dependencies** and runs entirely on CPU.
 
 # 🚀 Quick Start (30-Second Demo)
 
+**（Open in GitHub Codespaces to run the audit in 30 seconds without local installation.）**
+
 Clone the repository and run the baseline audit examples.
 
 ### 1️⃣ Clone Repository
