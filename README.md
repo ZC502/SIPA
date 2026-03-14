@@ -33,7 +33,7 @@ python scripts/run_audit.py --input demo/sipa_corrupted_trajectory.csv
 ```
 **KUKA iiwa_14_R820 & iiwa_7_r800:**
 ```
-python scripts/sipa_iiwa_audit.py --input demo/sample.csv
+python scripts/sipa_iiwa_audit.py --input demo/kuka_raw_sample.csv
 ```
 
 ---
