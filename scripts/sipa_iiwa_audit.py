@@ -1,28 +1,26 @@
 #!/usr/bin/env python3
 
 """
-SIPA v2.1
-Industrial Specialist
+SIPA v2.1 Industrial Specialist
 LBR iiwa Edition
+
+Robots
+------
+Default: KUKA LBR iiwa 14 R820
+Optional: iiwa 7 R800
 
 Features
 --------
-Forward Kinematics (iiwa 14 R820 default)
+Forward Kinematics
 TCP Jump Detector
 Z-axis Jitter Detector
 Joint Acceleration Audit
-Visualization
+TCP Heatmap Stability Analysis
+Visual Sanity Check (3D TCP path)
 
-Input
------
-KUKA.Sim CSV (7 columns joint angles deg)
-
-Output
+Theory
 ------
-TCP jitter report
-solver divergence detection
-joint acceleration audit
-plots
+Residual analysis based on NARH framework
 """
 
 import argparse
@@ -34,34 +32,37 @@ from pathlib import Path
 
 
 # ============================================================
-# Robot configuration
+# Robot configs
 # ============================================================
 
 ROBOT_CONFIG = {
 
     "iiwa14": {
         "name": "KUKA LBR iiwa 14 R820",
-        "links": [0.36, 0.42, 0.4]
+        "links": [0.36,0.42,0.40]
     },
 
     "iiwa7": {
         "name": "KUKA LBR iiwa 7 R800",
-        "links": [0.34, 0.4, 0.36]
+        "links": [0.34,0.40,0.36]
     }
 
 }
 
 
 # ============================================================
-# Loader
+# Robust CSV loader
 # ============================================================
 
 def load_kuka_csv(path):
 
-    df = pd.read_csv(path, header=None)
+    df = pd.read_csv(path,comment="#")
 
     if df.shape[1] != 7:
-        raise ValueError("CSV must contain 7 joint columns")
+
+        df = pd.read_csv(path,header=None)
+
+    df = df.iloc[:,:7]
 
     df.columns = [f"J{i+1}" for i in range(7)]
 
@@ -77,6 +78,7 @@ def load_kuka_csv(path):
 def deg2rad(df):
 
     for j in range(7):
+
         df[f"J{j+1}"] = np.deg2rad(df[f"J{j+1}"])
 
     return df
@@ -85,13 +87,14 @@ def deg2rad(df):
 def smooth(data):
 
     if len(data) < 7:
+
         return data
 
     return savgol_filter(data,7,2)
 
 
 # ============================================================
-# Forward Kinematics (simplified industrial model)
+# Forward Kinematics
 # ============================================================
 
 def fk_iiwa(joints,links):
@@ -133,9 +136,7 @@ def compute_tcp(df,links):
 
         tcp.append(p)
 
-    tcp = np.array(tcp)
-
-    return tcp
+    return np.array(tcp)
 
 
 # ============================================================
@@ -150,7 +151,7 @@ def detect_tcp_jump(tcp):
 
         d = np.linalg.norm(tcp[i+1]-tcp[i])
 
-        if d > 0.002:   # 2 mm
+        if d > 0.002:
 
             jumps.append((i,d))
 
@@ -158,7 +159,7 @@ def detect_tcp_jump(tcp):
 
 
 # ============================================================
-# Z-axis jitter
+# NARH Residual Analysis (Z jitter)
 # ============================================================
 
 def detect_z_jitter(tcp):
@@ -197,47 +198,75 @@ def joint_acceleration(df,dt):
     return acc
 
 
-def max_joint_debt(acc):
-
-    max_a = 0
-    bad_joint = None
-
-    for j,a in acc.items():
-
-        m = np.max(np.abs(a))
-
-        if m > max_a:
-            max_a = m
-            bad_joint = j
-
-    return max_a,bad_joint
-
-
 # ============================================================
-# Visualization
+# Heatmap stability analysis
 # ============================================================
 
-def plot_tcp(tcp,output):
+def tcp_heatmap(tcp,residual,output):
+
+    x = tcp[:,0]
+    y = tcp[:,1]
+
+    jitter = np.abs(residual)
 
     plt.figure(figsize=(6,6))
 
-    plt.plot(tcp[:,0],tcp[:,2])
+    sc = plt.scatter(
+        x,
+        y,
+        c=jitter,
+        cmap="inferno",
+        s=8
+    )
+
+    plt.colorbar(sc,label="Z jitter magnitude")
+
+    plt.title("TCP Stability Heatmap")
 
     plt.xlabel("X (m)")
-    plt.ylabel("Z (m)")
+    plt.ylabel("Y (m)")
 
-    plt.title("TCP XZ trajectory")
-
-    path = output/"tcp_path.png"
+    path = output/"tcp_heatmap.png"
 
     plt.savefig(path,dpi=150)
 
     plt.close()
 
 
+# ============================================================
+# Visualization sanity check
+# ============================================================
+
+def plot_tcp_3d(tcp,output):
+
+    from mpl_toolkits.mplot3d import Axes3D
+
+    fig = plt.figure()
+
+    ax = fig.add_subplot(111,projection="3d")
+
+    ax.plot(tcp[:,0],tcp[:,1],tcp[:,2])
+
+    ax.set_xlabel("X")
+    ax.set_ylabel("Y")
+    ax.set_zlabel("Z")
+
+    ax.set_title("TCP Path Sanity Check")
+
+    path = output/"tcp_3d_path.png"
+
+    plt.savefig(path,dpi=150)
+
+    plt.close()
+
+
+# ============================================================
+# Plotters
+# ============================================================
+
 def plot_z_jitter(residual,output):
 
-    plt.figure(figsize=(10,4))
+    plt.figure()
 
     plt.plot(residual)
 
@@ -245,14 +274,14 @@ def plot_z_jitter(residual,output):
 
     path = output/"z_jitter.png"
 
-    plt.savefig(path,dpi=150)
+    plt.savefig(path)
 
     plt.close()
 
 
 def plot_joint_acc(acc,output):
 
-    plt.figure(figsize=(10,5))
+    plt.figure()
 
     for j,a in acc.items():
 
@@ -264,7 +293,7 @@ def plot_joint_acc(acc,output):
 
     path = output/"joint_acc.png"
 
-    plt.savefig(path,dpi=150)
+    plt.savefig(path)
 
     plt.close()
 
@@ -273,17 +302,9 @@ def plot_joint_acc(acc,output):
 # Report
 # ============================================================
 
-def write_report(
-    robot,
-    frames,
-    jitter,
-    jumps,
-    debt,
-    joint,
-    output
-):
+def write_report(robot,frames,jitter,jumps,output):
 
-    report = f"""
+    text = f"""
 SIPA v2.1 Industrial Specialist
 Robot: {robot}
 
@@ -293,60 +314,41 @@ TCP Z Jitter
 ------------
 Std amplitude: {jitter*1000:.2f} mm
 
-TCP Jump Detection
-------------------
-
-Detected jumps: {len(jumps)}
-
+TCP Jump Events
+---------------
+{len(jumps)}
 """
 
     for f,d in jumps[:5]:
 
-        report += f"Frame {f}  Jump {d*1000:.2f} mm\n"
-
-    report += f"""
-
-Joint Acceleration Audit
-------------------------
-
-Max acceleration: {debt:.2f} rad/s^2
-Joint: {joint}
-
-Diagnosis
----------
-
-"""
+        text += f"Frame {f} Jump {d*1000:.2f} mm\n"
 
     if jitter > 0.001:
 
-        report += "Z-axis micro oscillation detected\n"
+        text += "\nDiagnosis: micro oscillation detected\n"
 
-    if len(jumps) > 0:
+    if len(jumps)>0:
 
-        report += "Possible solver divergence detected\n"
-
-    if debt > 50:
-
-        report += "Joint acceleration spike detected\n"
+        text += "Possible solver divergence\n"
 
     path = output/"audit_report.txt"
 
     with open(path,"w") as f:
 
-        f.write(report)
+        f.write(text)
 
     return path
 
 
 # ============================================================
-# Main audit
+# Main
 # ============================================================
 
 def run_audit(input_file,robot,dt,output):
 
     cfg = ROBOT_CONFIG[robot]
 
-    print("\n[SIPA] Robot:",cfg["name"])
+    print("\nRobot:",cfg["name"])
 
     df = load_kuka_csv(input_file)
 
@@ -360,33 +362,25 @@ def run_audit(input_file,robot,dt,output):
 
     acc = joint_acceleration(df,dt)
 
-    debt,joint = max_joint_debt(acc)
-
-    plot_tcp(tcp,output)
+    plot_tcp_3d(tcp,output)
 
     plot_z_jitter(residual,output)
 
     plot_joint_acc(acc,output)
+
+    tcp_heatmap(tcp,residual,output)
 
     report = write_report(
         cfg["name"],
         len(df),
         jitter,
         jumps,
-        debt,
-        joint,
         output
     )
 
-    print("\nResults")
-
-    print("TCP Z jitter:",round(jitter*1000,3),"mm")
+    print("\nTCP jitter:",round(jitter*1000,3),"mm")
 
     print("TCP jumps:",len(jumps))
-
-    print("Max joint acceleration:",round(debt,2))
-
-    print("Joint:",joint)
 
     print("\nReport:",report)
 
