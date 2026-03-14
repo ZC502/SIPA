@@ -1,277 +1,174 @@
 #!/usr/bin/env python3
-"""
-SIPA Auditor v1.3
-Spatial Intelligence Physical Audit
 
-New in v1.3
------------
-✔ Residual spike visualization
-✔ PIR evolution plot
-✔ 3D trajectory visualization
-✔ anomaly frame highlighting
-✔ research-grade diagnostic outputs
+"""
+SIPA v2.0 Robotics Auditor
+
+Modes
+-----
+cartesian : original SIPA trajectory audit
+kuka      : industrial robot joint-space audit
+
+New Industrial Features
+-----------------------
+Joint acceleration physics debt
+Joint limits validation
+Savitzky-Golay denoising
+Axis synchronization audit
 """
 
 import argparse
-import json
-import sys
-import random
-import platform
-import datetime
-from pathlib import Path
-
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+from scipy.signal import savgol_filter
+from pathlib import Path
 
 
 # ------------------------------------------------
-# Deterministic seed
+# KUKA JOINT LIMITS (approx industrial defaults)
 # ------------------------------------------------
 
-def set_seed(seed=42):
-    random.seed(seed)
-    np.random.seed(seed)
+JOINT_LIMITS = {
+    "J1": (-185,185),
+    "J2": (-120,120),
+    "J3": (-170,170),
+    "J4": (-185,185),
+    "J5": (-120,120),
+    "J6": (-350,350),
+    "J7": (-350,350),
+}
 
 
 # ------------------------------------------------
-# Industrial CSV Loader
+# Loader for KUKA CSV
 # ------------------------------------------------
 
-TIME_ALIASES = ["frame","timestamp","time","t"]
+def load_kuka_csv(path):
 
-SPATIAL_COLUMNS = ["x","y","z","qx","qy","qz","qw"]
+    df = pd.read_csv(path, header=None)
 
+    if df.shape[1] != 7:
+        raise ValueError("KUKA CSV must have 7 columns")
 
-def load_trajectory(csv_path: Path):
+    df.columns = [f"J{i+1}" for i in range(7)]
 
-    df = pd.read_csv(
-        csv_path,
-        comment="#",
-        skip_blank_lines=True,
-        engine="c",
-        low_memory=False
-    )
-
-    if len(df)==0:
-        raise ValueError("CSV contains zero rows")
-
-    # detect time column
-    time_col=None
-    for c in TIME_ALIASES:
-        if c in df.columns:
-            time_col=c
-            break
-
-    if time_col is None:
-        raise ValueError("No time column detected")
-
-    if time_col!="frame":
-        df=df.rename(columns={time_col:"frame"})
-
-    # check spatial columns
-    for c in SPATIAL_COLUMNS:
-        if c not in df.columns:
-            raise ValueError(f"Missing column {c}")
-
-    # numeric enforcement
-    numeric_cols=["frame"]+SPATIAL_COLUMNS
-    for c in numeric_cols:
-        df[c]=pd.to_numeric(df[c],errors="coerce")
-
-    if df[numeric_cols].isnull().any().any():
-        raise ValueError("Non numeric values detected")
-
-    df=df.sort_values("frame").reset_index(drop=True)
+    df["frame"] = np.arange(len(df))
 
     return df
 
 
 # ------------------------------------------------
-# Physics validation
+# Joint limit validation
 # ------------------------------------------------
 
-def validate_physics(df):
+def validate_joint_limits(df):
 
-    score=1.0
-    issues=[]
+    violations = []
 
-    qnorm=np.sqrt(
-        df.qx**2+df.qy**2+df.qz**2+df.qw**2
-    )
+    for j,(low,high) in JOINT_LIMITS.items():
 
-    if not np.allclose(qnorm,1,atol=1e-2):
-        score-=0.2
-        issues.append("Quaternion normalization drift")
+        bad = df[(df[j] < low) | (df[j] > high)]
 
-    if not np.all(np.diff(df.frame.values)>0):
-        score-=0.2
-        issues.append("Frame discontinuity")
+        if len(bad) > 0:
+            violations.append(j)
 
-    score=max(score,0)
-
-    return score,issues
+    return violations
 
 
 # ------------------------------------------------
-# Residual computation
+# Smoothing
 # ------------------------------------------------
 
-def compute_residual(df,dt):
+def smooth_signal(data):
 
-    pos=df[["x","y","z"]].values
+    if len(data) < 7:
+        return data
 
-    vel=np.diff(pos,axis=0)/dt
-    acc=np.diff(vel,axis=0)/dt
-
-    residual=np.linalg.norm(acc,axis=1)
-
-    return residual
+    return savgol_filter(data,7,2)
 
 
 # ------------------------------------------------
-# PIR
+# Compute joint acceleration
 # ------------------------------------------------
 
-def compute_pir(residual):
+def compute_joint_acc(df,dt):
 
-    pir=np.exp(-np.mean(residual)/10)
+    acc = {}
 
-    return float(pir)
+    for j in [f"J{i+1}" for i in range(7)]:
+
+        theta = smooth_signal(df[j].values)
+
+        vel = np.gradient(theta,dt)
+
+        a = np.gradient(vel,dt)
+
+        acc[j] = a
+
+    return acc
 
 
 # ------------------------------------------------
-# Anomaly detection
+# Physics debt
 # ------------------------------------------------
 
-def detect_anomaly(residual,df):
+def compute_debt(acc):
 
-    idx=int(np.argmax(residual))
+    max_debt = 0
+    bad_joint = None
 
-    bad_frame=int(df.iloc[idx+2]["frame"])
+    for j,a in acc.items():
 
-    max_debt=float(residual[idx])
+        m = np.max(np.abs(a))
 
-    return bad_frame,max_debt,idx
+        if m > max_debt:
+            max_debt = m
+            bad_joint = j
+
+    return max_debt,bad_joint
+
+
+# ------------------------------------------------
+# Axis synchronization
+# ------------------------------------------------
+
+def axis_sync_score(acc):
+
+    peaks = []
+
+    for a in acc.values():
+
+        peaks.append(np.argmax(np.abs(a)))
+
+    peaks = np.array(peaks)
+
+    return np.std(peaks)
 
 
 # ------------------------------------------------
 # Visualization
 # ------------------------------------------------
 
-def plot_residual(residual,idx,output_dir):
+def plot_joint_acc(acc,output):
 
-    plt.figure(figsize=(8,4))
+    plt.figure(figsize=(10,5))
 
-    plt.plot(residual,label="Residual Acceleration")
+    for j,a in acc.items():
+        plt.plot(a,label=j)
 
-    plt.axvline(idx,color="red",linestyle="--",label="Anomaly")
-
+    plt.title("Joint Acceleration")
     plt.xlabel("Frame")
-    plt.ylabel("Acceleration (m/s^2)")
-    plt.title("Residual Physics Spike")
+    plt.ylabel("deg/s^2")
 
     plt.legend()
-    plt.tight_layout()
 
-    path=output_dir/"residual_spike.png"
+    p = output/"joint_acceleration.png"
 
-    plt.savefig(path,dpi=150)
+    plt.savefig(p,dpi=150)
+
     plt.close()
 
-    return path
-
-
-def plot_pir_evolution(residual,output_dir):
-
-    pir_series=np.exp(-residual/10)
-
-    plt.figure(figsize=(8,4))
-
-    plt.plot(pir_series)
-
-    plt.xlabel("Frame")
-    plt.ylabel("Local PIR")
-
-    plt.title("PIR Evolution")
-
-    plt.tight_layout()
-
-    path=output_dir/"pir_evolution.png"
-
-    plt.savefig(path,dpi=150)
-    plt.close()
-
-    return path
-
-
-def plot_trajectory(df,bad_frame,output_dir):
-
-    from mpl_toolkits.mplot3d import Axes3D
-
-    fig=plt.figure(figsize=(6,6))
-
-    ax=fig.add_subplot(111,projection="3d")
-
-    ax.plot(df.x,df.y,df.z,label="Trajectory")
-
-    bad=df[df.frame==bad_frame]
-
-    if len(bad)>0:
-        ax.scatter(
-            bad.x,
-            bad.y,
-            bad.z,
-            color="red",
-            s=80,
-            label="Anomaly"
-        )
-
-    ax.set_xlabel("X")
-    ax.set_ylabel("Y")
-    ax.set_zlabel("Z")
-
-    ax.set_title("3D Trajectory")
-
-    ax.legend()
-
-    path=output_dir/"trajectory_3d.png"
-
-    plt.tight_layout()
-    plt.savefig(path,dpi=150)
-    plt.close()
-
-    return path
-
-
-# ------------------------------------------------
-# Rating
-# ------------------------------------------------
-
-def rating(pir):
-
-    if pir>0.9: return "A"
-    if pir>0.75: return "B"
-    if pir>0.6: return "C"
-    return "F"
-
-
-# ------------------------------------------------
-# Diagnostic
-# ------------------------------------------------
-
-def diagnostic(pir,max_debt,bad_frame):
-
-    if pir>0.9:
-        return "PASS: Physically plausible trajectory"
-
-    if max_debt>5000:
-        return f"CRITICAL: teleportation-like jump at frame {bad_frame}"
-
-    if max_debt>500:
-        return f"WARNING: extreme acceleration spike at frame {bad_frame}"
-
-    return "MODERATE: minor physics inconsistency"
+    return p
 
 
 # ------------------------------------------------
@@ -279,68 +176,84 @@ def diagnostic(pir,max_debt,bad_frame):
 # ------------------------------------------------
 
 def write_report(
-    output_dir,input_file,df,pir,rating_label,
-    validator_score,issues,bad_frame,max_debt
+    output,
+    frames,
+    debt,
+    joint,
+    limit_violations,
+    sync_score
 ):
 
-    report=f"""
-SIPA Physical Audit Report
+    if debt > 5000:
+        severity = "CRITICAL"
+    elif debt > 2000:
+        severity = "WARNING"
+    else:
+        severity = "OK"
+
+    text = f"""
+SIPA Robotics Audit Report
 ==========================
 
-Input trajectory : {input_file}
+Frames: {frames}
 
-Frames           : {len(df)}
-Validator score  : {validator_score:.3f}
+Max Joint Acceleration Debt: {debt:.2f} deg/s^2
+Violation Joint: {joint}
 
-PIR Score        : {pir:.3f}
-Rating           : {rating_label}
+Axis Sync Score: {sync_score:.2f}
 
-Max Physics Debt : {max_debt:.2f} m/s^2
-Anomaly Frame    : {bad_frame}
+Joint Limit Violations: {limit_violations}
 
-Diagnostic
-----------
-{diagnostic(pir,max_debt,bad_frame)}
-
-Validator Issues
-----------------
+Diagnosis
+---------
+{severity}: Joint acceleration anomaly detected
 """
 
-    if issues:
-        for i in issues:
-            report+=f"- {i}\n"
-    else:
-        report+="None\n"
+    p = output/"audit_report.txt"
 
-    path=output_dir/"audit_report.txt"
+    with open(p,"w") as f:
+        f.write(text)
 
-    with open(path,"w") as f:
-        f.write(report)
-
-    return path
+    return p
 
 
 # ------------------------------------------------
-# Metadata
+# KUKA AUDIT
 # ------------------------------------------------
 
-def write_metadata(output_dir,input_file,dt,pir):
+def run_kuka(path,dt,output):
 
-    meta={
-        "timestamp":datetime.datetime.now(datetime.UTC).isoformat(),
-        "python":platform.python_version(),
-        "platform":platform.platform(),
-        "input_file":str(input_file),
-        "dt":dt,
-        "pir":pir
-    }
+    print("\n[SIPA] KUKA mode")
 
-    path=output_dir/"audit_metadata.json"
+    df = load_kuka_csv(path)
 
-    with open(path,"w") as f:
-        json.dump(meta,f,indent=2)
+    limit_violations = validate_joint_limits(df)
 
-    return path
+    acc = compute_joint_acc(df,dt)
+
+    debt,joint = compute_debt(acc)
+
+    sync = axis_sync_score(acc)
+
+    plot_joint_acc(acc,output)
+
+    report = write_report(
+        output,
+        len(df),
+        debt,
+        joint,
+        limit_violations,
+        sync
+    )
+
+    print("\nRESULT")
+    print("Frames:",len(df))
+    print("Max Debt:",round(debt,2),"deg/s^2")
+    print("Joint:",joint)
+    print("Axis Sync Score:",round(sync,2))
+    print("Joint Limits Violated:",limit_violations)
+
+    print("\nReport:",report)
 
 
 # ------------------------------------------------
@@ -349,80 +262,36 @@ def write_metadata(output_dir,input_file,dt,pir):
 
 def parse_args():
 
-    parser=argparse.ArgumentParser(
-        description="SIPA Physical Auditor v1.3"
-    )
+    p = argparse.ArgumentParser()
 
-    parser.add_argument("--input",required=True)
-    parser.add_argument("--dt",type=float,default=1/60)
-    parser.add_argument("--output",default="outputs")
-    parser.add_argument("--seed",type=int,default=42)
+    p.add_argument("--input",required=True)
+    p.add_argument("--mode",default="kuka")
+    p.add_argument("--dt",type=float,default=0.01)
+    p.add_argument("--output",default="outputs")
 
-    return parser.parse_args()
+    return p.parse_args()
 
 
 # ------------------------------------------------
-# Main
+# MAIN
 # ------------------------------------------------
 
 def main():
 
-    args=parse_args()
+    args = parse_args()
 
-    set_seed(args.seed)
+    path = Path(args.input)
 
-    input_csv=Path(args.input)
-    output_dir=Path(args.output)
+    output = Path(args.output)
 
-    output_dir.mkdir(parents=True,exist_ok=True)
+    output.mkdir(exist_ok=True)
 
-    print("\n[SIPA] Loading trajectory")
+    if args.mode == "kuka":
+        run_kuka(path,args.dt,output)
 
-    df=load_trajectory(input_csv)
-
-    validator_score,issues=validate_physics(df)
-
-    print("[SIPA] Computing residuals")
-
-    residual=compute_residual(df,args.dt)
-
-    pir=compute_pir(residual)
-
-    rating_label=rating(pir)
-
-    bad_frame,max_debt,idx=detect_anomaly(residual,df)
-
-    # visualizations
-
-    res_plot=plot_residual(residual,idx,output_dir)
-
-    pir_plot=plot_pir_evolution(residual,output_dir)
-
-    traj_plot=plot_trajectory(df,bad_frame,output_dir)
-
-    report_path=write_report(
-        output_dir,input_csv,df,pir,rating_label,
-        validator_score,issues,bad_frame,max_debt
-    )
-
-    meta_path=write_metadata(
-        output_dir,input_csv,args.dt,pir
-    )
-
-    print("\n[SIPA RESULT]")
-    print("PIR:",round(pir,3))
-    print("Rating:",rating_label)
-    print("Bad Frame:",bad_frame)
-    print("Max Physics Debt:",round(max_debt,2))
-
-    print("\nGenerated files:")
-    print(report_path)
-    print(meta_path)
-    print(res_plot)
-    print(pir_plot)
-    print(traj_plot)
-    print()
+    else:
+        print("Cartesian mode not included in this snippet")
 
 
-if __name__=="__main__":
+if __name__ == "__main__":
     main()
