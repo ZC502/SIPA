@@ -4,10 +4,13 @@
 SIPA v2.1 Industrial Specialist
 LBR iiwa Edition
 
-Robots
-------
-Default: KUKA LBR iiwa 14 R820
-Optional: iiwa 7 R800
+Default Robot
+-------------
+KUKA LBR iiwa 14 R820
+
+Optional
+--------
+iiwa7
 
 Features
 --------
@@ -20,7 +23,7 @@ Visual Sanity Check (3D TCP path)
 
 Theory
 ------
-Residual analysis based on NARH framework
+Residual analysis inspired by NARH framework
 """
 
 import argparse
@@ -59,7 +62,6 @@ def load_kuka_csv(path):
     df = pd.read_csv(path,comment="#")
 
     if df.shape[1] != 7:
-
         df = pd.read_csv(path,header=None)
 
     df = df.iloc[:,:7]
@@ -72,22 +74,36 @@ def load_kuka_csv(path):
 
 
 # ============================================================
-# Utility
+# Unit utilities
 # ============================================================
 
 def deg2rad(df):
 
     for j in range(7):
-
         df[f"J{j+1}"] = np.deg2rad(df[f"J{j+1}"])
 
     return df
 
 
+def detect_unit(df):
+
+    values = df[[f"J{i+1}" for i in range(7)]].values
+
+    max_val = np.max(np.abs(values))
+
+    if max_val > 6.5:
+        return "deg"
+    else:
+        return "rad"
+
+
+# ============================================================
+# Utility
+# ============================================================
+
 def smooth(data):
 
     if len(data) < 7:
-
         return data
 
     return savgol_filter(data,7,2)
@@ -152,14 +168,13 @@ def detect_tcp_jump(tcp):
         d = np.linalg.norm(tcp[i+1]-tcp[i])
 
         if d > 0.002:
-
             jumps.append((i,d))
 
     return jumps
 
 
 # ============================================================
-# NARH Residual Analysis (Z jitter)
+# Z-axis jitter (NARH residual analysis)
 # ============================================================
 
 def detect_z_jitter(tcp):
@@ -226,9 +241,7 @@ def tcp_heatmap(tcp,residual,output):
     plt.xlabel("X (m)")
     plt.ylabel("Y (m)")
 
-    path = output/"tcp_heatmap.png"
-
-    plt.savefig(path,dpi=150)
+    plt.savefig(output/"tcp_heatmap.png",dpi=150)
 
     plt.close()
 
@@ -238,8 +251,6 @@ def tcp_heatmap(tcp,residual,output):
 # ============================================================
 
 def plot_tcp_3d(tcp,output):
-
-    from mpl_toolkits.mplot3d import Axes3D
 
     fig = plt.figure()
 
@@ -253,9 +264,7 @@ def plot_tcp_3d(tcp,output):
 
     ax.set_title("TCP Path Sanity Check")
 
-    path = output/"tcp_3d_path.png"
-
-    plt.savefig(path,dpi=150)
+    plt.savefig(output/"tcp_3d_path.png",dpi=150)
 
     plt.close()
 
@@ -272,9 +281,7 @@ def plot_z_jitter(residual,output):
 
     plt.title("Z-axis jitter residual")
 
-    path = output/"z_jitter.png"
-
-    plt.savefig(path)
+    plt.savefig(output/"z_jitter.png")
 
     plt.close()
 
@@ -284,16 +291,13 @@ def plot_joint_acc(acc,output):
     plt.figure()
 
     for j,a in acc.items():
-
         plt.plot(a,label=j)
 
     plt.legend()
 
     plt.title("Joint acceleration")
 
-    path = output/"joint_acc.png"
-
-    plt.savefig(path)
+    plt.savefig(output/"joint_acc.png")
 
     plt.close()
 
@@ -320,31 +324,27 @@ TCP Jump Events
 """
 
     for f,d in jumps[:5]:
-
         text += f"Frame {f} Jump {d*1000:.2f} mm\n"
 
     if jitter > 0.001:
-
         text += "\nDiagnosis: micro oscillation detected\n"
 
     if len(jumps)>0:
-
         text += "Possible solver divergence\n"
 
     path = output/"audit_report.txt"
 
     with open(path,"w") as f:
-
         f.write(text)
 
     return path
 
 
 # ============================================================
-# Main
+# Main audit
 # ============================================================
 
-def run_audit(input_file,robot,dt,output):
+def run_audit(input_file,robot,dt,unit,output):
 
     cfg = ROBOT_CONFIG[robot]
 
@@ -352,7 +352,17 @@ def run_audit(input_file,robot,dt,output):
 
     df = load_kuka_csv(input_file)
 
-    df = deg2rad(df)
+    # unit handling
+
+    if unit == "auto":
+        unit = detect_unit(df)
+        print("[SIPA] Auto detected unit:",unit)
+
+    if unit == "deg":
+        print("[SIPA] Converting deg → rad")
+        df = deg2rad(df)
+    else:
+        print("[SIPA] Using radians")
 
     tcp = compute_tcp(df,cfg["links"])
 
@@ -363,11 +373,8 @@ def run_audit(input_file,robot,dt,output):
     acc = joint_acceleration(df,dt)
 
     plot_tcp_3d(tcp,output)
-
     plot_z_jitter(residual,output)
-
     plot_joint_acc(acc,output)
-
     tcp_heatmap(tcp,residual,output)
 
     report = write_report(
@@ -379,9 +386,7 @@ def run_audit(input_file,robot,dt,output):
     )
 
     print("\nTCP jitter:",round(jitter*1000,3),"mm")
-
     print("TCP jumps:",len(jumps))
-
     print("\nReport:",report)
 
 
@@ -394,23 +399,28 @@ def main():
     parser = argparse.ArgumentParser()
 
     parser.add_argument("--input",required=True)
-
-    parser.add_argument("--robot",default="iiwa14")
-
+    parser.add_argument("--robot",default="iiwa14",choices=["iiwa14","iiwa7"])
     parser.add_argument("--dt",type=float,default=0.01)
+
+    parser.add_argument(
+        "--unit",
+        default="auto",
+        choices=["auto","deg","rad"],
+        help="Joint angle unit"
+    )
 
     parser.add_argument("--output",default="outputs")
 
     args = parser.parse_args()
 
     output = Path(args.output)
-
     output.mkdir(exist_ok=True)
 
     run_audit(
         args.input,
         args.robot,
         args.dt,
+        args.unit,
         output
     )
 
