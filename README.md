@@ -23,6 +23,10 @@ cd SIPA
 ```
 pip install -r requirements.txt
 ```
+**KUKA iiwa_14_R820 & iiwa_7_r800:**
+```
+python scripts/sipa_iiwa_audit.py --input demo/sample.csv
+```
 Recommended Python version
 ```
 Python >= 3.8
