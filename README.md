@@ -226,6 +226,7 @@ In other words, $R_t$ quantifies the degree to which the simulation outcome depe
 ---
 
 **4. Hypothesis (NARH)**
+
 The **Non-Associative Residual Hypothesis (NARH)** states that:
 
 In high interaction density regimes — such as contact-rich robotic manipulation or high-speed trajectory execution — the non-associative residual  can become non-negligible relative to trajectory stability metrics.
