@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
 
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.append(str(ROOT))
+
 """
 SIPA v2.2 Industrial Solver Audit Edition
 LBR iiwa Edition
@@ -31,7 +37,10 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from scipy.signal import savgol_filter
-from pathlib import Path
+from core.solver_fingerprint import (
+  SolverInstabilityFingerprint,
+  print_instability_report
+)
 
 
 # ============================================================
@@ -59,16 +68,19 @@ ROBOT_CONFIG = {
 
 def load_kuka_csv(path):
 
-    df = pd.read_csv(path,comment="#")
+    try:
+        df = pd.read_csv(path, comment="#")
+    except:
+        df = pd.read_csv(path, comment="#", encoding="latin1")
 
     if df.shape[1] < 7:
-        df = pd.read_csv(path,header=None)
+        df = pd.read_csv(path, header=None)
 
-    df = df.iloc[:,:7]
+    df = df.iloc[:, :7]
 
     df.columns = [f"J{i+1}" for i in range(7)]
 
-    df = df.apply(pd.to_numeric,errors="coerce")
+    df = df.apply(pd.to_numeric, errors="coerce")
 
     df = df.dropna()
 
@@ -163,7 +175,7 @@ def compute_tcp(df,links):
 # TCP Jump Detector
 # ============================================================
 
-def detect_tcp_jump(tcp, threshold=0.002):
+def detect_tcp_jump(tcp, threshold=0.01):
 
     jumps = []
 
@@ -250,7 +262,8 @@ def tcp_heatmap(tcp,residual,output):
 
     plt.xlabel("X")
     plt.ylabel("Y")
-
+    plt.axis("equal")
+    
     plt.savefig(output/"tcp_heatmap.png",dpi=150)
 
     plt.close()
@@ -302,6 +315,8 @@ def plot_joint_acc(acc,output):
     for j in range(acc.shape[1]):
         plt.plot(acc[:,j],label=f"J{j+1}")
 
+    plt.grid(True)
+    
     plt.legend()
 
     plt.title("Joint acceleration (rad/s²)")
@@ -353,7 +368,6 @@ TCP Jump Events
 # Main audit
 # ============================================================
 
-from solver_fingerprint import SolverInstabilityFingerprint, print_instability_report
 
 def run_audit(input_file, robot, dt, unit, output):
 
@@ -362,7 +376,8 @@ def run_audit(input_file, robot, dt, unit, output):
     print("\n" + "="*40)
     print(f"SIPA v2.2 - Auditing: {cfg['name']}")
     print("="*40)
-
+    print("Residual Engine: NARH (Non-Associative Residual Hypothesis)")
+    
     # 1. Load data
     df = load_kuka_csv(input_file)
 
@@ -384,11 +399,11 @@ def run_audit(input_file, robot, dt, unit, output):
     acc = joint_acceleration(df, dt)
 
     # 4. Solver Instability Fingerprint (v2.2 NEW)
-    # Thresholds: 50mm jump, 500rad/s^2 acc, 50mm residual
+    # # Thresholds: 30mm TCP jump, 300 rad/s² acceleration, 20mm residual
     fingerprint = SolverInstabilityFingerprint(
-        tcp_threshold_mm=50,
-        acc_threshold=500,
-        z_threshold_mm=50
+        tcp_threshold_mm=30,
+        acc_threshold=300,
+        z_threshold_mm=20
     )
     
     # Extract numerical values for detection
@@ -452,7 +467,7 @@ def main():
     args = parser.parse_args()
 
     output = Path(args.output)
-    output.mkdir(exist_ok=True)
+    output.mkdir(parents=True, exist_ok=True)
 
     run_audit(
         args.input,
