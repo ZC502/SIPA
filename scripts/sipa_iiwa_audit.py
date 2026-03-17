@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 """
-SIPA v2.1 Industrial Specialist
+SIPA v2.2 Industrial Solver Audit Edition
 LBR iiwa Edition
 
 Default Robot
@@ -61,12 +61,16 @@ def load_kuka_csv(path):
 
     df = pd.read_csv(path,comment="#")
 
-    if df.shape[1] != 7:
+    if df.shape[1] < 7:
         df = pd.read_csv(path,header=None)
 
     df = df.iloc[:,:7]
 
     df.columns = [f"J{i+1}" for i in range(7)]
+
+    df = df.apply(pd.to_numeric,errors="coerce")
+
+    df = df.dropna()
 
     df["frame"] = np.arange(len(df))
 
@@ -159,7 +163,7 @@ def compute_tcp(df,links):
 # TCP Jump Detector
 # ============================================================
 
-def detect_tcp_jump(tcp):
+def detect_tcp_jump(tcp, threshold=0.002):
 
     jumps = []
 
@@ -167,14 +171,18 @@ def detect_tcp_jump(tcp):
 
         d = np.linalg.norm(tcp[i+1]-tcp[i])
 
-        if d > 0.002:
-            jumps.append((i,d))
+        if d > threshold:
+
+            jumps.append((i, d))
 
     return jumps
 
 
 # ============================================================
-# Z-axis jitter (NARH residual analysis)
+# NARH Residual Engine
+# Non-Associative Residual Hypothesis inspired detector
+#
+# residual = observed_TCP - smoothed_physical_prediction
 # ============================================================
 
 def detect_z_jitter(tcp):
@@ -196,7 +204,7 @@ def detect_z_jitter(tcp):
 
 def joint_acceleration(df,dt):
 
-    acc = {}
+    acc_list = []
 
     for j in range(7):
 
@@ -208,9 +216,11 @@ def joint_acceleration(df,dt):
 
         a = np.gradient(vel,dt)
 
-        acc[name] = a
+        acc_list.append(a)
 
-    return acc
+    acc_matrix = np.vstack(acc_list).T
+
+    return acc_matrix
 
 
 # ============================================================
@@ -222,7 +232,7 @@ def tcp_heatmap(tcp,residual,output):
     x = tcp[:,0]
     y = tcp[:,1]
 
-    jitter = np.abs(residual)
+    jitter = np.abs(residual) * 1000
 
     plt.figure(figsize=(6,6))
 
@@ -234,17 +244,16 @@ def tcp_heatmap(tcp,residual,output):
         s=8
     )
 
-    plt.colorbar(sc,label="Z jitter magnitude")
+    plt.colorbar(sc,label="Z jitter magnitude (mm)")
 
-    plt.title("TCP Stability Heatmap")
+    plt.title("TCP Heatmap Stability Analysis")
 
-    plt.xlabel("X (m)")
-    plt.ylabel("Y (m)")
+    plt.xlabel("X")
+    plt.ylabel("Y")
 
     plt.savefig(output/"tcp_heatmap.png",dpi=150)
 
     plt.close()
-
 
 # ============================================================
 # Visualization sanity check
@@ -290,12 +299,12 @@ def plot_joint_acc(acc,output):
 
     plt.figure()
 
-    for j,a in acc.items():
-        plt.plot(a,label=j)
+    for j in range(acc.shape[1]):
+        plt.plot(acc[:,j],label=f"J{j+1}")
 
     plt.legend()
 
-    plt.title("Joint acceleration")
+    plt.title("Joint acceleration (rad/s²)")
 
     plt.savefig(output/"joint_acc.png")
 
@@ -309,7 +318,7 @@ def plot_joint_acc(acc,output):
 def write_report(robot,frames,jitter,jumps,output):
 
     text = f"""
-SIPA v2.1 Industrial Specialist
+SIPA v2.2 Industrial Solver Audit
 Robot: {robot}
 
 Frames: {frames}
@@ -344,39 +353,61 @@ TCP Jump Events
 # Main audit
 # ============================================================
 
-def run_audit(input_file,robot,dt,unit,output):
+from solver_fingerprint import SolverInstabilityFingerprint, print_instability_report
+
+def run_audit(input_file, robot, dt, unit, output):
 
     cfg = ROBOT_CONFIG[robot]
 
-    print("\nRobot:",cfg["name"])
+    print("\n" + "="*40)
+    print(f"SIPA v2.2 - Auditing: {cfg['name']}")
+    print("="*40)
 
+    # 1. Load data
     df = load_kuka_csv(input_file)
 
-    # unit handling
-
+    # 2. Unit handling
     if unit == "auto":
         unit = detect_unit(df)
-        print("[SIPA] Auto detected unit:",unit)
+        print(f"[SIPA] Auto detected unit: {unit}")
 
     if unit == "deg":
-        print("[SIPA] Converting deg → rad")
+        print("[SIPA] Converting deg -> rad")
         df = deg2rad(df)
     else:
         print("[SIPA] Using radians")
 
-    tcp = compute_tcp(df,cfg["links"])
-
+    # 3. Core Physics Calculations
+    tcp = compute_tcp(df, cfg["links"])
     jumps = detect_tcp_jump(tcp)
+    jitter, residual = detect_z_jitter(tcp)
+    acc = joint_acceleration(df, dt)
 
-    jitter,residual = detect_z_jitter(tcp)
+    # 4. Solver Instability Fingerprint (v2.2 NEW)
+    # Thresholds: 50mm jump, 500rad/s^2 acc, 50mm residual
+    fingerprint = SolverInstabilityFingerprint(
+        tcp_threshold_mm=50,
+        acc_threshold=500,
+        z_threshold_mm=50
+    )
+    
+    # Extract numerical values for detection
+    tcp_positions = tcp[:, :3] * 1000 #  mm
+    z_residual_mm = residual * 1000   #  mm
+    
+    instability_events = fingerprint.detect(
+        tcp_positions, 
+        acc, 
+        z_residual_mm
+    )
 
-    acc = joint_acceleration(df,dt)
+    # 5. Visualization
+    plot_tcp_3d(tcp, output)
+    plot_z_jitter(residual, output)
+    plot_joint_acc(acc, output)
+    tcp_heatmap(tcp, residual, output)
 
-    plot_tcp_3d(tcp,output)
-    plot_z_jitter(residual,output)
-    plot_joint_acc(acc,output)
-    tcp_heatmap(tcp,residual,output)
-
+    # 6. Reporting
     report = write_report(
         cfg["name"],
         len(df),
@@ -385,9 +416,16 @@ def run_audit(input_file,robot,dt,unit,output):
         output
     )
 
-    print("\nTCP jitter:",round(jitter*1000,3),"mm")
-    print("TCP jumps:",len(jumps))
-    print("\nReport:",report)
+    # 7. Console Output
+    print_instability_report(instability_events)
+    
+    print("\n" + "-"*30)
+    print(f"Summary Statistics:")
+    print(f"TCP jitter (RMS): {round(jitter*1000, 3)} mm")
+    print(f"Raw TCP jump frames: {len(jumps)}")
+    print(f"Critical Solver Failures: {len(instability_events)}")
+    print(f"Detailed Report: {report}")
+    print("-"*30)
 
 
 # ============================================================
