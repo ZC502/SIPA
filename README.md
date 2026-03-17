@@ -10,6 +10,8 @@ KUKA.Sim and detects non-physical motion artifacts including:
 - **joint acceleration spikes**
 - **workspace instability regions**
 
+SIPA bridges the gap between 'Perfect Simulation' and 'Violent Reality'.
+
 ### 📂 Case Study: KUKA LBR iiwa 14 R820 Stability Audit
 
 **Scenario Overview**
@@ -27,13 +29,13 @@ Frames: 125 | Frequency: 100Hz
 [WARNING] TCP Jump Events Detected at Initialization (Frame 0-4)
           Max Jump: 85.40 mm
 [DIAGNOSIS] Micro-oscillation detected at Joint 2 (Mid-path).
-[RISC LEVEL] HIGH: Potential Gearbox Resonance & Controller Overcurrent
+[RISK LEVEL] HIGH: Potential Gearbox Resonance & Controller Overcurrent
 ```
 **Visual Forensics**
 
 | ![Joint Acceleration Analysis](demo/J2axis.png)  | ![TCP Physical Residual](demo/Z-axis.png) |
 |---------------------------|-----------------------------------|
-| **Observation**:J2 axis experiences a massive acceleration spike ($>600\text{deg/s}^2$) near frame 60. |**Observation**: High-frequency jitter in Z-axis exceeds 0.04m, indicating solver divergence.
+| **Observation**:J2 axis experiences a massive acceleration spike ($>600\text{rad/s}^2$) near frame 60. |**Observation**: High-frequency jitter in Z-axis exceeds 0.04m, indicating solver divergence.
 
 | ![Spatial Stability Heatmap](demo/TCP.png) | ![Trajectory Sanity Check](demo/3D.png)   |
 |---------------------------|-----------------------------------|
@@ -73,6 +75,17 @@ trajectory interpolation or solver instability.
 **In practice, NARH enables SIPA to act as a "black box" for industrial robot trajectories.**
 
 For the specific mathematical formulas, please refer to the "**core-methodology**" section at the end of this article.
+
+---
+
+### SIPA VS Traditional Simulation 
+
+| Feature                  | Traditional Simulation                  | SIPA Audited                              |
+|--------------------------|-----------------------------------------|-------------------------------------------|
+| **Path Check**           | Geometry Only (Pass/Fail)               | Physics-consistent (Pass/Fail)            |
+| **Collision Risk**       | Static/Dynamic Check                    | Solver-based Surge Detection              |
+| **Maintenance**          | Reactive (Fix when broken)              | Proactive (Avoid resonance)               |
+| **Sim-to-Real**          | "Finger-crossed" deployment             | Verified Physics Alignment                |            
 
 ---
 
