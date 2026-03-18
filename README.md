@@ -1,6 +1,9 @@
 # SIPA: Simulation Integrity & Physics Auditor
 *The Black Box Auditor for Industrial Robot Trajectories*
 
+**"Trust your robot. Verify your simulation."**
+![SIPA Heatmap](demo/tcp_heatmap.png)
+
 ### SIPA is a diagnostic tool for industrial robot simulations.
 
 It analyzes robot trajectories exported from simulators such as
@@ -20,24 +23,32 @@ SIPA bridges the gap between 'Perfect Simulation' and 'Violent Reality'.
 - **Environment**: KUKA.Sim Pro / Visual Components
 - **Task**: Complex 3D spiral trajectory execution.
 
-**SIPA Audit Report v2.1**
+**SIPA Audit Report v2.2**
 ```
+SIPA v2.2 Industrial Solver Audit
 Robot: KUKA LBR iiwa 14 R820
-Frames: 125 | Frequency: 100Hz
-
-[CRITICAL] TCP Z Jitter: 10.96 mm (Std Amplitude)
-[WARNING] TCP Jump Events Detected at Initialization (Frame 0-4)
-          Max Jump: 85.40 mm
-[DIAGNOSIS] Micro-oscillation detected at Joint 2 (Mid-path).
-[RISK LEVEL] HIGH: Potential Gearbox Resonance & Controller Overcurrent
+Frames: 125
+TCP Z Jitter
+------------
+Std amplitude: 10.96 mm
+TCP Jump Events
+---------------
+124
+Frame 0 Jump 84.22 mm
+Frame 1 Jump 71.44 mm
+Frame 2 Jump 67.84 mm
+Frame 3 Jump 73.64 mm
+Frame 4 Jump 85.40 mm
+Diagnosis: micro oscillation detected
+Possible solver divergence
 ```
 **Visual Forensics**
 
-| ![Joint Acceleration Analysis](demo/J2axis.png)  | ![TCP Physical Residual](demo/Z-axis.png) |
+| ![Joint Acceleration Analysis](demo/joint_acc.png)  | ![TCP Physical Residual](demo/z_jitter.png) |
 |---------------------------|-----------------------------------|
-| **Observation**:J2 axis experiences a massive acceleration spike ($>600\text{rad/s}^2$) near frame 60. |**Observation**: High-frequency jitter in Z-axis exceeds 0.04m, indicating solver divergence.
+| **Observation**: J2 axis experiences a massive acceleration spike ($>600\text{rad/s}^2$) near frame 60. |**Observation**: High-frequency jitter in the Z-axis exceeds 10 mm,indicating potential solver instability.
 
-| ![Spatial Stability Heatmap](demo/TCP.png) | ![Trajectory Sanity Check](demo/3D.png)   |
+| ![Spatial Stability Heatmap](demo/tcp_heatmap.png) | ![Trajectory Sanity Check](demo/tcp_3d_path.png)   |
 |---------------------------|-----------------------------------|
 |**Observation**: Yellow/Pink clusters indicate localized instability zones in the working envelope.| **Observation**: The 3D path shows geometric continuity, but hides the underlying physical jitter."
 
@@ -146,6 +157,15 @@ All diagnostics are saved to ```outputs/```:
 
 ```joint_acc.png```: Acceleration audit to prevent motor over-torque.
 
+### Units
+
+SIPA internally converts joint angles to radians for kinematic computation.
+All TCP diagnostics are reported in Cartesian space.
+
+- TCP position: meters (m)
+- TCP jitter / jump metrics: millimeters (mm)
+- Joint acceleration: rad/s²
+
 ---
 
 ### 📄 Input Format (7-DoF Joint CSV)
@@ -174,7 +194,7 @@ If you use SIPA in your industrial or academic work, please cite:
 
 ---
 
-### 🧠core-methodology
+### 🧠core methodology
 ### Non-Associative Residual Hypothesis (NARH)
 **1. Setting**
 
@@ -298,7 +318,7 @@ If validated empirically, NARH suggests that:
 For industrial robot simulation pipelines, such diagnostics can assist in verifying **trajectory physical consistency** before deployment to real hardware.
 
 References:
-
+*Continuous_Physics_Solver_for_AI_Wang_Liu(2025)*
 [https://github.com/ZC502/TinyOEKF/blob/master/docs/Continuous_Physics_Solver_for_AI_Wang_Liu.pdf](https://github.com/ZC502/TinyOEKF/blob/master/docs/Continuous_Physics_Solver_for_AI_Wang_Liu.pdf)
 
 
