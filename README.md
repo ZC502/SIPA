@@ -2,7 +2,7 @@
 *The Black Box Auditor for Industrial Robot Trajectories*
 
 **"Trust your robot. Verify your simulation."**
-![SIPA Heatmap](demo/tcp_heatmap.png)
+![Joint Acceleration Analysis](demo/joint_acc.png)
 
 ### SIPA is a diagnostic tool for industrial robot simulations.
 
