@@ -1,7 +1,8 @@
 # SIPA: Simulation Integrity & Physics Auditor
 *The Black Box Auditor for Industrial Robot Trajectories*
 
-**"Trust your robot. Verify your simulation."**
+**"Verify your simulation & your robot."**
+
 ![Joint Acceleration Analysis](demo/joint_acc.png)
 
 ### SIPA is a diagnostic tool for industrial robot simulations.
