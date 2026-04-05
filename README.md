@@ -318,9 +318,7 @@ If validated empirically, NARH suggests that:
 
 For industrial robot simulation pipelines, such diagnostics can assist in verifying **trajectory physical consistency** before deployment to real hardware.
 
-References:
-*Continuous_Physics_Solver_for_AI_Wang_Liu(2025)*
-[https://github.com/ZC502/TinyOEKF/blob/master/docs/Continuous_Physics_Solver_for_AI_Wang_Liu.pdf](https://github.com/ZC502/TinyOEKF/blob/master/docs/Continuous_Physics_Solver_for_AI_Wang_Liu.pdf)
+
 
 
 
