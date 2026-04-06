@@ -318,10 +318,12 @@ If validated empirically, NARH suggests that:
 
 For industrial robot simulation pipelines, such diagnostics can assist in verifying **trajectory physical consistency** before deployment to real hardware.
 
+---
 
+**References**
 
-
-
+Hong.Ji.Wang, *Principles of Octonion Mathematical Physics* (Tianjin Science and
+Technology Press, 2020. Chinese version, ISBN: 978-7-5576-8256-9）
 
 
 
