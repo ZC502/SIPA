@@ -41,6 +41,7 @@ from core.solver_fingerprint import (
   SolverInstabilityFingerprint,
   print_instability_report
 )
+from core.root_cause import RootCauseClassifier, print_root_cause
 
 
 # ============================================================
@@ -416,13 +417,23 @@ def run_audit(input_file, robot, dt, unit, output):
         z_residual_mm
     )
 
-    # 5. Visualization
+    # ============================================================
+    # 5. v2.3 Root Cause Classification
+    # ============================================================
+    classifier = RootCauseClassifier()
+    root_results = classifier.classify(
+        tcp_positions,
+        acc,
+        z_residual_mm
+    )
+  
+    # 6. Visualization
     plot_tcp_3d(tcp, output)
     plot_z_jitter(residual, output)
     plot_joint_acc(acc, output)
     tcp_heatmap(tcp, residual, output)
 
-    # 6. Reporting
+    # 7. Reporting
     report = write_report(
         cfg["name"],
         len(df),
@@ -431,10 +442,18 @@ def run_audit(input_file, robot, dt, unit, output):
         output
     )
 
-    # 7. Console Output
-    print_instability_report(instability_events)
-    
+    # 8. Console Output
     print("\n" + "-"*30)
+    print("SIPA v2.3 - INDUSTRIAL DIAGNOSTICS")
+    print("="*30)
+
+    # Prioritize the display of diagnostic results
+    print_root_cause(root_results)
+
+    # Display specific fingerprint events
+    if instability_events:
+        print_instability_report(instability_events)
+ 
     print(f"Summary Statistics:")
     print(f"TCP jitter (RMS): {round(jitter*1000, 3)} mm")
     print(f"Raw TCP jump frames: {len(jumps)}")
