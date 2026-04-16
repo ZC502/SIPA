@@ -24,24 +24,49 @@ SIPA bridges the gap between 'Perfect Simulation' and 'Violent Reality'.
 - **Environment**: KUKA.Sim Pro / Visual Components
 - **Task**: Complex 3D spiral trajectory execution.
 
-**SIPA Audit Report v2.2**
+**SIPA Audit Report v2.3**
 ```
-SIPA v2.2 Industrial Solver Audit
-Robot: KUKA LBR iiwa 14 R820
-Frames: 125
-TCP Z Jitter
-------------
-Std amplitude: 10.96 mm
-TCP Jump Events
----------------
-124
-Frame 0 Jump 84.22 mm
-Frame 1 Jump 71.44 mm
-Frame 2 Jump 67.84 mm
-Frame 3 Jump 73.64 mm
-Frame 4 Jump 85.40 mm
-Diagnosis: micro oscillation detected
-Possible solver divergence
+========================================
+SIPA v2.3 - Auditing: KUKA LBR iiwa 14 R820
+========================================
+Residual Engine: NARH (Non-Associative Residual Hypothesis)
+[SIPA] Source format: headerless_numeric_csv
+[SIPA] Joint columns: J1, J2, J3, J4, J5, J6, J7
+[SIPA] Auto detected unit: rad
+[SIPA] Using radians
+[SIPA] Time base: fixed_dt
+
+------------------------------
+SIPA v2.3 - INDUSTRIAL DIAGNOSTICS
+==============================
+
+==================================================
+SIPA v2.3 Root Cause Classification
+==================================================
+
+Global Diagnosis
+Type: Unit Mismatch
+Confidence: HIGH
+Info: Nearly all frames show abnormal TCP jumps. Likely DEG/RAD mismatch.
+
+==================================================
+RoboDK Joint-Space Associator (NARH)
+==================================================
+Peak frame: 64
+Peak normalized score: 5.0464
+Peak raw score: 508.9813
+Alert threshold: 3.1829
+
+Top associator events:
+Frame 64: score=5.0464, TCP step=191.32 mm
+Summary Statistics:
+TCP jitter (RMS): 10.916 mm
+Raw TCP jump frames: 125
+Critical Solver Failures: 0
+Associator critical events: 1
+Associator peak: frame 64 score 5.0464
+Detailed Report: outputs/audit_report.txt
+------------------------------
 ```
 **Visual Forensics**
 
