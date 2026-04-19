@@ -13,6 +13,9 @@ MVP design
 - alarm-only
 - configurable joint target endpoint
 - supports JSON first, XML fallback parser stub
+- supports local debug JSON replay:
+    * single payload object
+    * sequence payload list (frame-by-frame replay)
 """
 
 from __future__ import annotations
@@ -22,7 +25,7 @@ import json
 import sys
 import time
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import requests
@@ -33,6 +36,8 @@ if str(ROOT) not in sys.path:
     sys.path.append(str(ROOT))
 
 from core.sipa_yumi_engine import JointSample, SIPAYuMiEngine
+
+JsonLike = Union[Dict[str, Any], List[Dict[str, Any]]]
 
 
 class ABBRWSProbe:
@@ -46,6 +51,7 @@ class ABBRWSProbe:
         verify_tls: bool = False,
         timeout_s: float = 3.0,
         raw_unit: str = "deg",
+        debug_json: Optional[str] = None,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.joint_path = joint_path
@@ -60,47 +66,58 @@ class ABBRWSProbe:
 
         self._t0_wall = time.monotonic()
 
+        # debug replay state
+        self.frame_index = 0
+        self.mock_data: Optional[JsonLike] = None
+        self.debug_mode = False
+        if debug_json:
+            self.debug_mode = True
+            debug_path = Path(debug_json)
+            self.mock_data = json.loads(debug_path.read_text(encoding="utf-8"))
+
     def _url(self) -> str:
         if self.joint_path.startswith("http://") or self.joint_path.startswith("https://"):
             return self.joint_path
         return f"{self.base_url}{self.joint_path}"
 
-    def fetch_joint_sample(self) -> Tuple[float, np.ndarray, Dict[str, Any]]:
+    def _fetch_raw(self) -> str:
+        """
+        Fetch raw payload text.
+
+        In debug mode:
+        - dict payload  -> replay same frame every cycle
+        - list payload  -> replay one frame per cycle, wrapping around
+        """
+        if self.mock_data is not None:
+            if isinstance(self.mock_data, list):
+                if len(self.mock_data) == 0:
+                    raise ValueError("debug-json contains an empty list")
+                data = self.mock_data[self.frame_index]
+                self.frame_index = (self.frame_index + 1) % len(self.mock_data)
+                return json.dumps(data)
+            return json.dumps(self.mock_data)
+
         resp = self.session.get(self._url(), timeout=self.timeout_s)
         resp.raise_for_status()
+        return resp.text
+
+    def fetch_joint_sample(self) -> Tuple[float, np.ndarray, Dict[str, Any]]:
+        raw_text = self._fetch_raw()
 
         timestamp = time.monotonic() - self._t0_wall
         meta: Dict[str, Any] = {
-            "http_status": resp.status_code,
             "endpoint": self.joint_path,
+            "debug_source": "json_replay" if self.mock_data is not None else None,
         }
 
-        content_type = resp.headers.get("Content-Type", "")
-        if "json" in content_type or resp.text.lstrip().startswith("{"):
-            payload = resp.json()
+        stripped = raw_text.lstrip()
+        if stripped.startswith("{") or stripped.startswith("["):
+            payload = json.loads(raw_text)
+            if isinstance(payload, list):
+                raise ValueError("Expected a single JSON object after _fetch_raw replay selection, got list")
             q = self._extract_joints_from_json(payload)
         else:
-            q = self._extract_joints_from_xml(resp.text)
-
-        if self.raw_unit == "deg":
-            q = np.deg2rad(q)
-            meta["raw_unit"] = "deg"
-        else:
-            meta["raw_unit"] = "rad"
-
-        return timestamp, q, meta
-
-    def fetch_joint_sample_from_payload(self, payload: Dict[str, Any]) -> Tuple[float, np.ndarray, Dict[str, Any]]:
-        """
-        Local debug mode: parse an already saved RWS JSON payload instead of calling the network.
-        """
-        timestamp = time.monotonic() - self._t0_wall
-        meta: Dict[str, Any] = {
-            "endpoint": self.joint_path,
-            "debug_source": "json_file",
-        }
-
-        q = self._extract_joints_from_json(payload)
+            q = self._extract_joints_from_xml(raw_text)
 
         if self.raw_unit == "deg":
             q = np.deg2rad(q)
@@ -149,12 +166,12 @@ class ABBRWSProbe:
             "Use a JSON-capable RWS endpoint first, or extend this function."
         )
 
-    def run(self, engine: SIPAYuMiEngine, duration_s: Optional[float] = None) -> None:
+    def run(self, engine: SIPAYuMiEngine, duration_s: Optional[float] = None, prefix: str = "RWS") -> None:
         start = time.monotonic()
 
         while True:
             ts, q, meta = self.fetch_joint_sample()
-            sample = JointSample(timestamp=ts, q=q, source="rws", meta=meta)
+            sample = JointSample(timestamp=ts, q=q, source="rws_debug" if self.debug_mode else "rws", meta=meta)
             result = engine.update(sample)
 
             if result.ready:
@@ -162,13 +179,13 @@ class ABBRWSProbe:
                 assoc = result.associator_norm if result.associator_norm is not None else float("nan")
                 tcp = result.tcp_step_mm if result.tcp_step_mm is not None else float("nan")
                 print(
-                    f"[RWS] t={result.timestamp:8.3f}s "
+                    f"[{prefix}] t={result.timestamp:8.3f}s "
                     f"assoc={assoc:8.3f} "
                     f"tcp_step_mm={tcp:8.3f} "
                     f"alarms={alarms}"
                 )
             else:
-                print(f"[RWS] t={result.timestamp:8.3f}s warming_up")
+                print(f"[{prefix}] t={result.timestamp:8.3f}s warming_up")
 
             if duration_s is not None and (time.monotonic() - start) >= duration_s:
                 break
@@ -186,7 +203,7 @@ def main() -> None:
         default=None,
         help="RWS joint target resource path, e.g. /rw/.../jointtarget?json=1"
     )
-    parser.add_argument("--debug-json", default=None, help="Read a saved RWS JSON payload from local file instead of calling the network")
+    parser.add_argument("--debug-json", default=None, help="Read a saved RWS JSON payload or sequence from local file instead of calling the network")
     parser.add_argument("--poll", type=float, default=0.20, help="Polling interval in seconds")
     parser.add_argument("--duration", type=float, default=None, help="Optional run duration in seconds")
     parser.add_argument("--verify-tls", action="store_true")
@@ -197,43 +214,26 @@ def main() -> None:
     engine = SIPAYuMiEngine()
 
     if args.debug_json:
-        debug_path = Path(args.debug_json)
-        payload = json.loads(debug_path.read_text(encoding="utf-8"))
+        # infer endpoint if payload is a dict with _links.self.href, else use fallback
+        joint_path = "/rw/motionsystem/mechunits/ROB_1/jointtarget?json=1"
+        try:
+            debug_obj = json.loads(Path(args.debug_json).read_text(encoding="utf-8"))
+            if isinstance(debug_obj, dict):
+                joint_path = debug_obj.get("_links", {}).get("self", {}).get("href", joint_path)
+        except Exception:
+            pass
 
         probe = ABBRWSProbe(
             base_url=args.host or "https://debug.local",
             username=args.user,
             password=args.password,
-            joint_path=args.joint_path or payload.get("_links", {}).get("self", {}).get("href", "/rw/motionsystem/mechunits/ROB_1/jointtarget?json=1"),
+            joint_path=args.joint_path or joint_path,
             poll_interval_s=args.poll,
             verify_tls=args.verify_tls,
             raw_unit=args.unit,
+            debug_json=args.debug_json,
         )
-
-        start = time.monotonic()
-        while True:
-            ts, q, meta = probe.fetch_joint_sample_from_payload(payload)
-            sample = JointSample(timestamp=ts, q=q, source="rws_debug", meta=meta)
-            result = engine.update(sample)
-
-            if result.ready:
-                alarms = ", ".join(f"{a.severity}:{a.kind}={a.value:.3f}" for a in result.alarms) or "none"
-                assoc = result.associator_norm if result.associator_norm is not None else float("nan")
-                tcp = result.tcp_step_mm if result.tcp_step_mm is not None else float("nan")
-                print(
-                    f"[RWS-DEBUG] t={result.timestamp:8.3f}s "
-                    f"assoc={assoc:8.3f} "
-                    f"tcp_step_mm={tcp:8.3f} "
-                    f"alarms={alarms}"
-                )
-            else:
-                print(f"[RWS-DEBUG] t={result.timestamp:8.3f}s warming_up")
-
-            if args.duration is not None and (time.monotonic() - start) >= args.duration:
-                break
-
-            time.sleep(args.poll)
-
+        probe.run(engine, duration_s=args.duration, prefix="RWS-DEBUG")
         return
 
     if not args.host or not args.joint_path:
@@ -248,7 +248,7 @@ def main() -> None:
         verify_tls=args.verify_tls,
         raw_unit=args.unit,
     )
-    probe.run(engine, duration_s=args.duration)
+    probe.run(engine, duration_s=args.duration, prefix="RWS")
 
 
 if __name__ == "__main__":
