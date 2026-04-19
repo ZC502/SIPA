@@ -1,0 +1,23 @@
+{
+    "_links": {
+        "self": { "href": "/rw/motionsystem/mechunits/ROB_1/jointtarget?json=1" }
+    },
+    "_embedded": {
+        "resources": [
+            {
+                "_type": "ms-mechunit-jointtarget",
+                "_links": { "self": { "href": "" } },
+                "rax_1": 15.234,
+                "rax_2": -45.120,
+                "rax_3": 20.455,
+                "rax_4": 5.001,
+                "rax_5": 90.123,
+                "rax_6": -10.550,
+                "eax_a": 33.400
+            }
+        ]
+    },
+    "state": [
+        { "_type": "p-status", "code": 200, "description": "OK" }
+    ]
+}
