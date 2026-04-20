@@ -1,7 +1,57 @@
 # SIPA: Simulation Integrity & Physics Auditor
-*The Black Box Auditor for Industrial Robot Trajectories*
+# 🚀 Solving "Arm-Angle" Discontinuity in 7-Axis Robots
+**SIPA** is a real-time physical consistency engine designed for 7-DOF redundant manipulators. It identifies high-dimensional algebraic anomalies that traditional monitoring tools overlook.
 
-**"Verify your simulation & your robot."**
+By utilizing **NARH (Non-Associative Residual Hypothesis)**, SIPA detects "Redundancy Jumps" within Robot Web Services (RWS) trajectories—transient instabilities that compromise Physical AI stability—and facilitates real-time corrective actions via **EGM (Externally Guided Motion)**.
+
+---
+
+**1. 3-Second Showreel: Quantifying the Invisible**
+The following output from `abb_rws_probe.py` demonstrates SIPA’s diagnostic capability when processing a 7-axis synthetic benchmark sequence. Notice the exponential surge in the `assoc` (NARH) score during a redundancy space jump:
+```
+[RWS-DEBUG] t= 1.213s assoc=   0.000 tcp_step_mm= 1.304 alarms=none
+[RWS-DEBUG] t= 1.414s assoc=   0.429 tcp_step_mm= 1.304 alarms=none
+
+# CRITICAL MOMENT: Capturing Arm-Angle Discontinuity
+[RWS-DEBUG] t= 2.243s assoc=  3090.785 tcp_step_mm= 1.302 alarms=ALERT:associator_peak=3090.785
+[RWS-DEBUG] t= 2.444s assoc= 11224.296 tcp_step_mm= 1.302 alarms=ALERT:associator_peak=11224.296
+```
+**Diagnostic Conclusion**: Even when the End-Effector displacement (**TCP Step**) remains smooth and nearly constant (~1.3mm), NARH detects a massive algebraic instability score exceeding **11,000**. This signals a severe "Arm-Angle" jump and reference-direction sensitivity that would likely destabilize a neural-network-based controller.
+
+---
+
+**2. Benchmark Demo (Instant Validation)**
+You can verify the diagnostic logic immediately without physical hardware or a virtual controller connection using our built-in benchmark sequence.
+
+**Run the 7-axis Redundancy Jump Test:**
+```
+python sources/abb_rws_probe.py \
+  --debug-json debug_payload_seq.json \
+  --unit deg \
+  --poll 0.2 \
+  --duration 3
+```
+**Underlying Principles:**
+- **Data Source**: The `debug_payload_seq.json` provides a **Synthetic Benchmark Sequence** simulating a standard 7-axis RWS payload (rax_1..6 + eax_a), containing a deliberate null-space motion discontinuity.
+- **Core Logic**: The engine is powered by **NARH (Non-Associative Residual Hypothesis)**. Unlike traditional kinematic models that rely on Jacobian thresholds, NARH captures topological "breaks" in the manifold through high-dimensional algebraic residuals.
+
+---
+
+**3. Roadmap: From Audit to Correction**
+SIPA is designed to scale with your deployment needs:
+1. **Phase 1: Diagnostic (Current)** — A non-intrusive "Stethoscope" using RWS to monitor and audit path consistency.
+2. **Phase 2: Corrective (In-Dev)** — Moving the NARH engine into the 4ms **EGM (Externally Guided Motion)** loop to actively suppress redundancy oscillations and arm-angle flips in real-time.
+
+---
+
+**License & Technical Deep Dive**
+For a detailed explanation of the math, see [NARH]((https://github.com/ZC502/SIPA/edit/main/README.md#non-associative-residual-hypothesis-narh).
+
+Maintained by ZuoCen Liu.
+
+---
+
+### SIPA for KUKA iiwa
 
 ![Joint Acceleration Analysis](demo/joint_acc.png)
 
