@@ -45,9 +45,8 @@ SIPA is designed to scale with your deployment needs:
 ---
 
 **License & Technical Deep Dive**
-For a detailed explanation of the math, see [NARH](https://github.com/ZC502/SIPA/edit/main/README.md#non-associative-residual-hypothesis-narh).
-
-Maintained by ZuoCen Liu.
+- For a detailed explanation of the math, see [(Non-Associative Residual Hypothesis)](https://github.com/ZC502/SIPA/edit/main/README.md#non-associative-residual-hypothesis-narh).
+- Maintained by **ZuoCen Liu**.
 
 ---
 
