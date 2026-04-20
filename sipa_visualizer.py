@@ -189,7 +189,14 @@ def run_visualization(
     ax2.annotate(
         f"Peak: {format_peak(peak_val)}",
         xy=(peak_time, peak_val),
-        xytext=(peak_time - 0.55, peak_val * 1.8),
+        ax2.annotate(
+    f"Peak: {format_peak(raw_peak_val)}",
+    xy=(peak_time, peak_display_val),
+    xytext=(20, 20),
+    textcoords="offset points",
+    arrowprops=dict(arrowstyle="-|>", lw=1.2, color="black"),
+    fontsize=11,
+),
         arrowprops=dict(arrowstyle="-|>", lw=1.2, color="black"),
         fontsize=11,
     )
