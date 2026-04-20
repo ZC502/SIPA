@@ -124,8 +124,7 @@ def run_visualization(
         return
 
     # For log plotting: use raw positive score, not normalized score
-    plot_df["assoc_plot"] = plot_df["assoc_raw"].fillna(np.nan)
-    plot_df["assoc_plot"] = plot_df["assoc_plot"].clip(lower=1e-9)
+    plot_df["assoc_plot"] = np.log10(plot_df["assoc_raw"].fillna(np.nan).clip(lower=1e-9))
 
     peak_idx = plot_df["assoc_plot"].idxmax()
     peak_time = plot_df.loc[peak_idx, "time"]
@@ -182,7 +181,7 @@ def run_visualization(
         label="NARH continuity score",
     )
 
-    ax2.set_yscale("log")
+    ax2.set_ylabel("log10(NARH Continuity Score)", fontsize=13)
 
     if t0 is not None and t1 is not None:
         ax2.axvspan(t0, t1, color="gray", alpha=0.15)
