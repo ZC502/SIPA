@@ -43,11 +43,11 @@ For robotics engineers, **Non-Associative Residual Hypothesis (NARH)** can be un
 
 **The Problem: Order-Dependent Deviations**
 
-In discrete simulation or control, constraint resolution (joint limits, collision avoidance, redundancy) is handled by sub-operators $\{\Psi_i\}$. In a perfect world, the order of operations wouldn't matter. In reality, due to finite-precision numerical approximations, the sequence of execution influences the result:
+In 7-axis controllers (like the IRB 14050), the redundancy resolution is handled by discrete numerical sub-operators . Ideally, these are associative. However, near singularities or complex manifolds, the order of execution matters:
 
 $$(\Psi_a \circ \Psi_b) \circ \Psi_c \neq \Psi_a \circ (\Psi_b \circ \Psi_c)$$
 
-We define the **Discrete Associator** to quantify this deviation:
+SIPA calculates the **Discrete Associator**:
 
 $$A(a,b,c;s) = \bigl( (\Psi_a \circ \Psi_b) \circ \Psi_c \bigr)(s) - \bigl( \Psi_a \circ (\Psi_b \circ \Psi_c) \bigr)(s)$$
 
