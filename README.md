@@ -1,8 +1,8 @@
 # SIPA: Simulation Integrity & Physics Auditor
-# 🚀 Solving "Arm-Angle" Discontinuity in 7-Axis Robots
-**SIPA** is a real-time physical consistency engine designed for 7-DOF redundant manipulators. It identifies high-dimensional algebraic anomalies that traditional monitoring tools overlook.
+# 🚀 Real-time Detection of 7-Axis Arm-Angle Discontinuities via ABB RWS
+**SIPA** is a non-intrusive physical consistency engine for 7-DOF redundant manipulators. It quantifies topological anomalies in the robot's manifold that traditional Cartesian monitoring tools often overlook.
 
-By utilizing **NARH (Non-Associative Residual Hypothesis)**, SIPA detects "Redundancy Jumps" within Robot Web Services (RWS) trajectories—transient instabilities that compromise Physical AI stability—and facilitates real-time corrective actions via **EGM (Externally Guided Motion)**.
+By utilizing the **Non-Associative Residual Hypothesis (NARH)**, SIPA detects "Redundancy Jumps" and "Arm-Angle flips" directly from **Robot Web Services (RWS)** streams—identifying instabilities that compromise Physical AI and high-precision trajectory execution.
 
 ---
 
@@ -16,12 +16,12 @@ The following output from `abb_rws_probe.py` demonstrates SIPA’s diagnostic ca
 [RWS-DEBUG] t= 2.243s assoc=  3090.785 tcp_step_mm= 1.302 alarms=ALERT:associator_peak=3090.785
 [RWS-DEBUG] t= 2.444s assoc= 11224.296 tcp_step_mm= 1.302 alarms=ALERT:associator_peak=11224.296
 ```
-**Diagnostic Conclusion**: Even when the End-Effector displacement (**TCP Step**) remains smooth and nearly constant (~1.3mm), NARH detects a massive algebraic instability score exceeding **11,000**. This signals a severe "Arm-Angle" jump and reference-direction sensitivity that would likely destabilize a neural-network-based controller.
+**Diagnostic Conclusion**: Even when the End-Effector displacement (**TCP Step**) remains smooth (~1.3mm), NARH detects a massive algebraic instability score exceeding **11,000**. This signals a severe **Arm-Angle discontinuity** and reference-direction sensitivity that can destabilize controllers and cause physical vibration.
 
 ---
 
 **2. Benchmark Demo (Instant Validation)**
-You can verify the diagnostic logic immediately without physical hardware or a virtual controller connection using our built-in benchmark sequence.
+You can verify the diagnostic logic without physical hardware using our built-in synthetic benchmark. This sequence simulates a standard 7-axis RWS payload containing a deliberate null-space motion discontinuity.
 
 **Run the 7-axis Redundancy Jump Test:**
 ```
@@ -37,16 +37,48 @@ python sources/abb_rws_probe.py \
 
 ---
 
-**3. Roadmap: From Audit to Correction**
-SIPA is designed to scale with your deployment needs:
-1. **Phase 1: Diagnostic (Current)** — A non-intrusive "Stethoscope" using RWS to monitor and audit path consistency.
-2. **Phase 2: Corrective (In-Dev)** — Moving the NARH engine into the 4ms **EGM (Externally Guided Motion)** loop to actively suppress redundancy oscillations and arm-angle flips in real-time.
+**3. Deep Dive: What is NARH?**
+
+For robotics engineers, **Non-Associative Residual Hypothesis (NARH)** can be understood as a measure of **Solver Order Sensitivity**.
+
+**The Problem: Order-Dependent Deviations**
+
+In discrete simulation or control, constraint resolution (joint limits, collision avoidance, redundancy) is handled by sub-operators $\{\Psi_i\}$. In a perfect world, the order of operations wouldn't matter. In reality, due to finite-precision numerical approximations, the sequence of execution influences the result:
+
+$$(\Psi_a \circ \Psi_b) \circ \Psi_c \neq \Psi_a \circ (\Psi_b \circ \Psi_c)$$
+
+We define the **Discrete Associator** to quantify this deviation:
+
+$$A(a,b,c;s) = \bigl( (\Psi_a \circ \Psi_b) \circ \Psi_c \bigr)(s) - \bigl( \Psi_a \circ (\Psi_b \circ \Psi_c) \bigr)(s)$$
+
+**The Hypothesis**
+
+NARH states that in **high-interaction regimes** (such as 7-axis robots near singularities or during redundancy resolution switching), this residual $R_t = \| A \|$ becomes a structured component of trajectory drift rather than simple noise.
+
+**Why it matters for ABB 7-Axis Robots**:
+- **Arm-Angle Jitter**: When the redundancy resolution struggles with "Arm-Angle Reference Direction," the solver order sensitivity spikes.
+- **Logical Collisions**: NARH captures these "breaks" in the manifold even when the TCP looks acceptable in Cartesian space.
+- **Predictive Auditing**: By monitoring the accumulation $\sum R_t \neq 0$, SIPA flags high-risk paths before they cause hardware wear or AI policy failure.
+
+Note: More detailed derivation formulas are available at the end of the article.
+
+**References**
+
+Hong.Ji.Wang, *Principles of Octonion Mathematical Physics* (Tianjin Science and
+Technology Press, 2020. Chinese version, ISBN: 978-7-5576-8256-9）
 
 ---
 
-**License & Technical Deep Dive**
-- For a detailed explanation of the math, see [(Non-Associative Residual Hypothesis)](https://github.com/ZC502/SIPA/edit/main/README.md#non-associative-residual-hypothesis-narh).
-- Maintained by **ZuoCen Liu**.
+**4. Roadmap: From Audit to Correction**
+SIPA is designed to move from passive monitoring to active control:
+1. **Phase 1: Diagnostic (Current)** — A non-intrusive "Stethoscope" using the **RWS (HTTPS/JSON)** interface. Ideal for auditing path consistency in existing RAPID programs without modifying code.
+2. **Phase 2: Corrective (In-Dev)** — Integrating the NARH engine into the 4ms **EGM (Externally Guided Motion)** loop. This allows for active prediction and smoothing of redundancy flips during high-speed execution.
+
+---
+
+**Contact & Credits**
+- **Theory & Implementation**: ZuoCen Liu
+- **Mathematics**: Based on the principles of Non-associative Algebraic Physics.
 
 ---
 
