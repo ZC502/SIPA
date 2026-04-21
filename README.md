@@ -82,7 +82,8 @@ SIPA is designed to move from passive monitoring to active control:
 **Contact & Credits**
 - **Theory**：Professor Hongji wang
 - **Implementation**: ZuoCen Liu
-- **Mathematics**: Based on the principles of Non-associative Algebraic Physics. *Principles of Octonion Mathematical Physics* (Tianjin Science and
+- **Contact**：liuzc19761204@gmail.com
+- **Mathematics**: Based on the principles of Non-associative Algebraic. *Principles of Octonion Mathematical Physics* (Author: Hongji wang, Tianjin Science and
 Technology Press, 2020. Chinese version, ISBN: 978-7-5576-8256-9）
 
 ---
