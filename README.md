@@ -1,8 +1,12 @@
 # SIPA: Simulation Integrity & Physics Auditor
-# 🚀 Real-time Detection of 7-Axis Arm-Angle Discontinuities via ABB RWS
-**SIPA** is a non-intrusive physical consistency engine for 7-DOF redundant manipulators. It quantifies topological anomalies in the robot's manifold that traditional Cartesian monitoring tools often overlook.
+# 🚀 Real-time Detection of IRB 14050 Arm-Angle Discontinuities via ABB RWS (Replay Benchmark)
+SIPA is a non-intrusive physical consistency engine for **IRB 14050 / 7-Axis** redundant robots. It quantifies joint-space discontinuities and redundancy-resolution inconsistencies that traditional Cartesian monitoring tools often overlook.
 
-By utilizing the **Non-Associative Residual Hypothesis (NARH)**, SIPA detects "Redundancy Jumps" and "Arm-Angle flips" directly from **Robot Web Services (RWS)** streams—identifying instabilities that compromise Physical AI and high-precision trajectory execution.
+By utilizing the **Non-Associative Residual Hypothesis (NARH)**, SIPA detects "Redundancy Jumps" and "Arm-Angle flips" directly from Robot Web Services (RWS) streams—revealing hidden instabilities that compromise high-precision trajectory execution and Physical AI.
+
+![figure](https://github.com/ZC502/SIPA/blob/b3afa88cacdcf78442917d2cb4849dc7df84e3c6/diagnostic_plot_dual_panel.png)
+
+>Figure 1: In this replay benchmark, the estimated TCP step remains nearly constant, while the NARH continuity score rises sharply within the same time window, indicating a hidden redundancy-state discontinuity.
 
 ---
 
