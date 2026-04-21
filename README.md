@@ -69,11 +69,6 @@ When this residual $R_t = \| A \|$ spikes (as shown in our diagnostic plot), it 
 
 Note: More detailed derivation formulas are available at the end of the article.
 
-**References**
-
-Hong.Ji.Wang, *Principles of Octonion Mathematical Physics* (Tianjin Science and
-Technology Press, 2020. Chinese version, ISBN: 978-7-5576-8256-9）
-
 ---
 
 **4. Roadmap: From Audit to Correction**
@@ -85,8 +80,10 @@ SIPA is designed to move from passive monitoring to active control:
 ---
 
 **Contact & Credits**
-- **Theory & Implementation**: ZuoCen Liu
-- **Mathematics**: Based on the principles of Non-associative Algebraic Physics.
+- **Theory**：Professor Hongji wang
+- **Implementation**: ZuoCen Liu
+- **Mathematics**: Based on the principles of Non-associative Algebraic Physics. *Principles of Octonion Mathematical Physics* (Tianjin Science and
+Technology Press, 2020. Chinese version, ISBN: 978-7-5576-8256-9）
 
 ---
 
