@@ -77,6 +77,7 @@ Technology Press, 2020. Chinese version, ISBN: 978-7-5576-8256-9）
 ---
 
 **4. Roadmap: From Audit to Correction**
+
 SIPA is designed to move from passive monitoring to active control:
 1. **Phase 1: Diagnostic (Current)** — A non-intrusive "Stethoscope" using the **RWS (HTTPS/JSON)** interface. Ideal for auditing path consistency in existing RAPID programs without modifying code.
 2. **Phase 2: Corrective (In-Dev)** — Integrating the NARH engine into the 4ms **EGM (Externally Guided Motion)** loop. This allows for active prediction and smoothing of redundancy flips during high-speed execution.
