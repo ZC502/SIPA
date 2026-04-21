@@ -64,7 +64,7 @@ When this residual $R_t = \| A \|$ spikes (as shown in our diagnostic plot), it 
 **Why it matters for ABB 7-Axis Robots**:
 - **Arm-Angle Jitter**: When the redundancy resolution struggles with "Arm-Angle Reference Direction" (a common pain point in 7-axis motion), the solver's order-sensitivity spikes.
 - **Hidden Redundancy Breaks**: NARH captures these **logical "breaks" in the joint-space** even when the TCP looks perfectly stable in Cartesian monitoring.
-- **Predictive Auditing**: By monitoring the accumulation $\sum R_t \neq 0$, SIPA flags high-risk paths before they cause hardware wear, unexpected vibrations, or AI policy failures.
+- **Predictive Auditing**: By monitoring the accumulation $\sum R_t \neq 0$, SIPA flags high-risk paths before they cause hardware wear, unexpected vibrations, or "Physics AI" policy failures.
 
 Note: More detailed derivation formulas and the algebraic background of NARH are available at the end of the article.
 
