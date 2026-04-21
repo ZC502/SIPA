@@ -30,7 +30,7 @@ The following output from `abb_rws_probe.py` demonstrates SIPA’s diagnostic ca
 ---
 
 **2. Benchmark Demo (Instant Validation)**
-You can verify the diagnostic logic without physical hardware using our built-in synthetic benchmark. This sequence simulates a standard 7-axis RWS payload containing a deliberate null-space motion discontinuity.
+You can verify the diagnostic logic without physical hardware using our built-in synthetic benchmark. This sequence simulates a standard **IRB 14050** RWS payload containing a deliberate **redundancy-state discontinuity**.
 
 **Run the 7-axis Redundancy Jump Test:**
 ```
@@ -41,9 +41,8 @@ python sources/abb_rws_probe.py \
   --duration 3
 ```
 **Underlying Principles:**
-- **Data Source**: The `debug_payload_seq.json` provides a **Synthetic Benchmark Sequence** simulating a standard 7-axis RWS payload (rax_1..6 + eax_a), containing a deliberate null-space motion discontinuity.
-- **Core Logic**: The engine is powered by **NARH (Non-Associative Residual Hypothesis)**. Unlike traditional kinematic models that rely on Jacobian thresholds, NARH captures topological "breaks" in the manifold through high-dimensional algebraic residuals.
-
+- **Data Source**: The `debug_payload_seq.json` provides a Synthetic Benchmark Sequence simulating a standard 7-axis RWS payload (`rax_1..6` + `eax_a`), capturing a specific event where the arm-angle flips despite a smooth TCP path.
+- **Core Logic**: The engine is powered by **NARH (Non-Associative Residual Hypothesis)**. Unlike traditional kinematic models that rely on Jacobian thresholds, NARH captures **joint-space discontinuities** through high-dimensional algebraic residuals—exposing hidden instability in the redundancy resolution logic.
 ---
 
 **3. What is NARH?**
@@ -63,11 +62,11 @@ $$A(a,b,c;s) = \bigl( (\Psi_a \circ \Psi_b) \circ \Psi_c \bigr)(s) - \bigl( \Psi
 When this residual $R_t = \| A \|$ spikes (as shown in our diagnostic plot), it indicates that the robot's **Arm-Angle** is nearing a state of numerical instability. This often precedes an "Arm-Angle flip" or a sudden redundancy jump that traditional Cartesian-based monitoring (TCP tracking) cannot predict.
 
 **Why it matters for ABB 7-Axis Robots**:
-- **Arm-Angle Jitter**: When the redundancy resolution struggles with "Arm-Angle Reference Direction," the solver order sensitivity spikes.
-- **Logical Collisions**: NARH captures these "breaks" in the manifold even when the TCP looks acceptable in Cartesian space.
-- **Predictive Auditing**: By monitoring the accumulation $\sum R_t \neq 0$, SIPA flags high-risk paths before they cause hardware wear or AI policy failure.
+- **Arm-Angle Jitter**: When the redundancy resolution struggles with "Arm-Angle Reference Direction" (a common pain point in 7-axis motion), the solver's order-sensitivity spikes.
+- **Hidden Redundancy Breaks**: NARH captures these **logical "breaks" in the joint-space** even when the TCP looks perfectly stable in Cartesian monitoring.
+- **Predictive Auditing**: By monitoring the accumulation $\sum R_t \neq 0$, SIPA flags high-risk paths before they cause hardware wear, unexpected vibrations, or AI policy failures.
 
-Note: More detailed derivation formulas are available at the end of the article.
+Note: More detailed derivation formulas and the algebraic background of NARH are available at the end of the article.
 
 ---
 
