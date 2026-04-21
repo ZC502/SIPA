@@ -8,6 +8,11 @@ By utilizing the **Non-Associative Residual Hypothesis (NARH)**, SIPA detects "R
 
 >Figure 1: In this replay benchmark, the estimated TCP step remains nearly constant, while the NARH continuity score rises sharply within the same time window, indicating a hidden redundancy-state discontinuity.
 
+**Key Capabilities**
+- **Read-Only Monitoring**: Passive audit of ABB RWS JSON streams without interrupting the controller.
+- **NARH Scoring**: A high-fidelity algebraic metric to "listen" to redundancy-state stability.
+- **Early Warning**: Identifying potential arm-angle flips before they manifest as physical vibrations or TCP tracking errors.
+
 ---
 
 **1. 3-Second Showreel: Quantifying the Invisible**
@@ -41,13 +46,13 @@ python sources/abb_rws_probe.py \
 
 ---
 
-**3. Deep Dive: What is NARH?**
+**3. What is NARH?**
 
 For robotics engineers, **Non-Associative Residual Hypothesis (NARH)** can be understood as a measure of **Solver Order Sensitivity**.
 
 **The Problem: Order-Dependent Deviations**
 
-In 7-axis controllers (like the IRB 14050), the redundancy resolution is handled by discrete numerical sub-operators . Ideally, these are associative. However, near singularities or complex manifolds, the order of execution matters:
+In 7-axis controllers (like the IRB 14050), redundancy resolution is handled by discrete numerical sub-operators. Ideally, these operations should be associative. However, near **singular configuration regions** or **complex joint-space topologies**, the order of execution matters:
 
 $$(\Psi_a \circ \Psi_b) \circ \Psi_c \neq \Psi_a \circ (\Psi_b \circ \Psi_c)$$
 
@@ -55,9 +60,7 @@ SIPA calculates the **Discrete Associator**:
 
 $$A(a,b,c;s) = \bigl( (\Psi_a \circ \Psi_b) \circ \Psi_c \bigr)(s) - \bigl( \Psi_a \circ (\Psi_b \circ \Psi_c) \bigr)(s)$$
 
-**The Hypothesis**
-
-NARH states that in **high-interaction regimes** (such as 7-axis robots near singularities or during redundancy resolution switching), this residual $R_t = \| A \|$ becomes a structured component of trajectory drift rather than simple noise.
+When this residual $R_t = \| A \|$ spikes (as shown in our diagnostic plot), it indicates that the robot's **Arm-Angle** is nearing a state of numerical instability. This often precedes an "Arm-Angle flip" or a sudden redundancy jump that traditional Cartesian-based monitoring (TCP tracking) cannot predict.
 
 **Why it matters for ABB 7-Axis Robots**:
 - **Arm-Angle Jitter**: When the redundancy resolution struggles with "Arm-Angle Reference Direction," the solver order sensitivity spikes.
